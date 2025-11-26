@@ -1,0 +1,456 @@
+// apps/backend/prisma/schema.prisma
+
+generator client {
+  provider = "prisma-client-js"
+  // output dihapus agar import standar
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ==============================
+// ENUMS
+// ==============================
+
+enum Role {
+  Validator
+  Contributor
+  Admin
+}
+
+enum JenisSoal {
+  short_answer    @map("short answer")
+  multiple_choice @map("multiple choice")
+  multiple_answer @map("multiple answer")
+  true_false      @map("true false")
+}
+
+enum LevelKesulitan {
+  mudah
+  sedang
+  sulit
+}
+
+enum StatusSoal {
+  draft
+  need_verification @map("need verification")
+  disetujui
+  ditolak
+}
+
+enum StatusValidasi {
+  ditolak
+  disetujui
+}
+
+enum JenisPaket {
+  latihan
+  try_out @map("try-out")
+}
+
+enum StatusPaket {
+  draft
+  active
+  inactive
+}
+
+enum NamaPeriode {
+  hari
+  minggu
+  bulan
+  tahun
+}
+
+enum StatusSubscribe {
+  active
+  inactive
+}
+
+enum UserStatusEnum {
+  Verified
+  Unverified
+  Suspend
+}
+
+// ==============================
+// MODELS
+// ==============================
+
+model Categories {
+  id_category   Int            @id @default(autoincrement())
+  nama_category String?        @db.VarChar(45)
+  keterangan    String?        @db.VarChar(45)
+  
+  categorySubject CategorySubject[]
+  paketSoal       PaketSoal[]
+  paketLangganan  PaketLangganan[]
+  
+  // Relasi ke Topics
+  categoryTopics  CategoryTopics[]
+
+  @@map("categories")
+}
+
+model Subjects {
+  id_subject    Int            @id @default(autoincrement()) @map("id_subject")
+  nama_subject  String?        @db.VarChar(45)
+  keterangan    String?        @db.VarChar(45)
+  
+  topics          Topics[]
+  categorySubject CategorySubject[]
+  
+  // Relasi ke Kompetensi User
+  userKompetensi  KompetensiUser[]
+
+  @@map("subjects")
+}
+
+model Users {
+  id_user    Int      @id @default(autoincrement())
+  username   String?  @db.VarChar(45)
+  password   String?  @db.VarChar(100)
+  role       Role?
+  nama_user  String?  @db.VarChar(45)
+  email_user String?  @db.VarChar(45)
+  phone      String?  @db.VarChar(45)
+  
+  // Field Foto
+  foto       String?  @db.VarChar(255)
+
+  soalCreated  Soal[]          @relation("UserSoal")
+  validasiSoal ValidasiSoal[]
+  paketCreated PaketSoal[]
+  
+  // Relasi Status
+  statusUser   UserStatus[]    @relation("UserOwner")
+  statusAdmin  UserStatus[]    @relation("AdminModifier")
+  
+  // Relasi ke Kompetensi
+  kompetensi   KompetensiUser[]
+
+  @@map("users")
+}
+
+model KompetensiUser {
+  id_user    Int
+  id_subject Int
+
+  user       Users    @relation(fields: [id_user], references: [id_user])
+  subject    Subjects @relation(fields: [id_subject], references: [id_subject])
+
+  // Composite Primary Key (Many-to-Many Junction)
+  @@id([id_user, id_subject])
+  @@map("kompetensi_user")
+}
+
+model UserStatus {
+  id_user_status   Int             @id @default(autoincrement())
+  id_user          Int
+  status           UserStatusEnum?
+  id_admin         Int
+  
+  tanggal_modified String?         @db.VarChar(45) // Saran: Gunakan DateTime jika memungkinkan
+  description      String?         @db.VarChar(45)
+
+  user             Users           @relation("UserOwner", fields: [id_user], references: [id_user])
+  admin            Users           @relation("AdminModifier", fields: [id_admin], references: [id_user])
+
+  @@map("user_status")
+}
+
+model Topics {
+  id_topics   Int     @id @default(autoincrement())
+  nama_topics String? @db.VarChar(45)
+  keterangan  String? @db.VarChar(45)
+  id_subjects Int
+  
+  subject     Subjects @relation(fields: [id_subjects], references: [id_subject])
+  subTopics   SubTopics[]
+  soal        Soal[]
+  
+  // Relasi ke Categories
+  categoryTopics CategoryTopics[]
+
+  @@map("topics")
+}
+
+model CategoryTopics {
+  id_topics   Int
+  id_category Int
+
+  topic       Topics     @relation(fields: [id_topics], references: [id_topics])
+  category    Categories @relation(fields: [id_category], references: [id_category])
+
+  // Composite Primary Key
+  @@id([id_topics, id_category])
+  @@map("kategori_topics")
+}
+
+model SubTopics {
+  id_subtopics    Int               @id @default(autoincrement())
+  nama_subtopics  String?           @db.VarChar(45)
+  keterangan      String?           @db.VarChar(45)
+  id_topics       Int
+  topic           Topics            @relation(fields: [id_topics], references: [id_topics])
+  detailSubTopics DetailSubTopics[]
+  soal            Soal[]
+
+  @@map("sub_topics")
+}
+
+model DetailSubTopics {
+  id_detail_subtopics   Int       @id @default(autoincrement())
+  nama_detail_subtopics String?   @db.VarChar(45)
+  keterangan            String?   @db.VarChar(45)
+  id_subtopics          Int
+  subTopic              SubTopics @relation(fields: [id_subtopics], references: [id_subtopics])
+  soal                  Soal[]
+
+  @@map("detail_sub_topics")
+}
+
+model CategorySubject {
+  id_category_subject Int        @id @default(autoincrement())
+  id_category         Int        @map("d_category")
+  id_subject          Int
+  category            Categories @relation(fields: [id_category], references: [id_category])
+  subject             Subjects   @relation(fields: [id_subject], references: [id_subject])
+
+  @@map("category_subject")
+}
+
+model Soal {
+  id_soal             Int              @id @default(autoincrement())
+  tanggal_pembuatan   String?          @db.VarChar(45)
+  text_soal           String?          @db.VarChar(1000)
+  jenis_soal          JenisSoal?
+  level_kesulitan     LevelKesulitan?
+  id_contributor      Int
+  status              StatusSoal?
+  id_topics           Int
+  id_subtopics        Int
+  id_detail_subtopics Int
+  
+  contributor         Users            @relation("UserSoal", fields: [id_contributor], references: [id_user])
+  topic               Topics           @relation(fields: [id_topics], references: [id_topics])
+  subTopic            SubTopics        @relation(fields: [id_subtopics], references: [id_subtopics])
+  detailSubTopic      DetailSubTopics  @relation(fields: [id_detail_subtopics], references: [id_detail_subtopics])
+  
+  soalTags            SoalTags[]
+  validasi            ValidasiSoal[]
+  reports             Reports[]
+  favorites           Favorites[]
+  soalPaket           SoalPaketSoal[]
+  jawaban             JawabanSoal[]
+  attachments         AttachmentsSoal[]
+
+  @@map("soal")
+}
+
+model SoalTags {
+  id_tags      Int     @id @default(autoincrement())
+  tag          String? @db.VarChar(45)
+  soal_id_soal Int
+  soal         Soal    @relation(fields: [soal_id_soal], references: [id_soal])
+
+  @@map("soal_tags")
+}
+
+model ValidasiSoal {
+  id_validasi      Int             @id @default(autoincrement())
+  tanggal_validasi DateTime?
+  keterangan       String?         @db.VarChar(500)
+  status           StatusValidasi?
+  id_validator     Int
+  id_soal          Int
+  validator        Users           @relation(fields: [id_validator], references: [id_user])
+  soal             Soal            @relation(fields: [id_soal], references: [id_soal])
+
+  @@map("validasi_soal")
+}
+
+model Subscribers {
+  id_subscriber       Int                   @id @default(autoincrement())
+  username            String?               @db.VarChar(45)
+  password            String?               @db.VarChar(100)
+  nama_subscriber     String?               @db.VarChar(45)
+  email_subscriber    String?               @unique @db.VarChar(45)
+  phone               String?               @unique @db.VarChar(45)
+  reports             Reports[]
+  favorites           Favorites[]
+  subscribePaket      SubscribePaket[]
+  paketAttempt        PaketAttempt[]
+  historyPengerjaan   HistoryPengerjaanPaket[]
+  institusiSubscriber SubscribersInstitusi[]
+
+  @@map("subscribers")
+}
+
+model Reports {
+  id_report      Int         @id @default(autoincrement())
+  id_subscriber  Int
+  id_soal        Int
+  keterangan     String?     @db.VarChar(500)
+  tanggal_report DateTime?
+  status         String?     @db.VarChar(45)
+  subscriber     Subscribers @relation(fields: [id_subscriber], references: [id_subscriber])
+  soal           Soal        @relation(fields: [id_soal], references: [id_soal])
+
+  @@map("reports")
+}
+
+model Favorites {
+  id_favorite   Int         @id @default(autoincrement())
+  id_subscriber Int
+  id_soal       Int
+  tanggal       DateTime?
+  subscriber    Subscribers @relation(fields: [id_subscriber], references: [id_subscriber])
+  soal          Soal        @relation(fields: [id_soal], references: [id_soal])
+
+  @@map("favorites")
+}
+
+model PaketSoal {
+  id_paket_soal  Int            @id @default(autoincrement()) // <-- PERBAIKAN: Ditambah autoincrement
+  jenis          JenisPaket?
+  tanggal_dibuat DateTime?
+  status         StatusPaket?
+  nama_paket     String?        @db.VarChar(100)
+  jumlah_soal    Int?
+  durasi         Int?
+  id_category    Int
+  id_creator     Int
+  category       Categories     @relation(fields: [id_category], references: [id_category])
+  creator        Users          @relation(fields: [id_creator], references: [id_user])
+  soalPaket      SoalPaketSoal[]
+  paketAttempt   PaketAttempt[]
+
+  @@map("paket_soal")
+}
+
+model SoalPaketSoal {
+  id_soal_paket_soal Int                      @id @default(autoincrement())
+  id_soal            Int
+  id_paket_soal      Int
+  point              Float?                   @default(1)
+  durasi             Int?                     @default(0)
+  soal               Soal                     @relation(fields: [id_soal], references: [id_soal])
+  paketSoal          PaketSoal                @relation(fields: [id_paket_soal], references: [id_paket_soal])
+  history            HistoryPengerjaanPaket[]
+
+  @@map("soal_paket_soal")
+}
+
+model PaketLangganan {
+  id_paket_langganan Int              @id @default(autoincrement())
+  nama_paket         String?          @db.VarChar(45)
+  harga              Int?
+  masa_berlaku       Int?             @default(1)
+  nama_periode       NamaPeriode?     @default(bulan)
+  status             StatusPaket?     @map("status")
+  id_category        Int
+  category           Categories       @relation(fields: [id_category], references: [id_category])
+  diskonPaket        DiskonPaket[]
+  subscribes         SubscribePaket[]
+
+  @@map("paket_langganan")
+}
+
+model DiskonPaket {
+  id_diskon              Int            @id @default(autoincrement())
+  diskon                 Float?         @default(0)
+  tanggal_mulai_diskon   DateTime?
+  tanggal_selesai_diskon DateTime?
+  id_paket_langganan     Int
+  paketLangganan         PaketLangganan @relation(fields: [id_paket_langganan], references: [id_paket_langganan])
+
+  @@map("diskon_paket")
+}
+
+model SubscribePaket {
+  id_subscribe       Int             @id @default(autoincrement())
+  id_subscriber      Int
+  id_paket_langganan Int
+  tanggal_subscribe  DateTime?
+  tanggal_mulai      DateTime?
+  tanggal_selesai    DateTime?
+  status             StatusSubscribe?
+  subscriber         Subscribers     @relation(fields: [id_subscriber], references: [id_subscriber])
+  paketLangganan     PaketLangganan  @relation(fields: [id_paket_langganan], references: [id_paket_langganan])
+
+  @@map("subscribe_paket")
+}
+
+model PaketAttempt {
+  id_paket_attempt          Int                      @id @default(autoincrement()) // <-- PERBAIKAN: Ditambah autoincrement
+  paket_soal_id_paket_soal  Int
+  subscribers_id_subscriber Int
+  started_at                DateTime?
+  finished_at               DateTime?
+  paketSoal                 PaketSoal                @relation(fields: [paket_soal_id_paket_soal], references: [id_paket_soal])
+  subscriber                Subscribers              @relation(fields: [subscribers_id_subscriber], references: [id_subscriber])
+  history                   HistoryPengerjaanPaket[]
+
+  @@map("paket_attempt")
+}
+
+model JawabanSoal {
+  id_jawaban         Int                      @id @default(autoincrement())
+  opsi_jawaban_text  String?                  @db.VarChar(100)
+  opsi_jawaban_image String?                  @db.VarChar(255) // <-- Saran: String (URL) lebih baik dari Bytes
+  status             Boolean?                 @default(false)
+  short_answer       String?                  @db.VarChar(45)
+  soal_id_soal       Int
+  pembahasan         String?                  @db.VarChar(200)
+  soal               Soal                     @relation(fields: [soal_id_soal], references: [id_soal])
+  history            HistoryPengerjaanPaket[]
+
+  @@map("jawaban_soal")
+}
+
+model HistoryPengerjaanPaket {
+  id_history         Int           @id @default(autoincrement())
+  id_subscriber      Int
+  id_soal_paket_soal Int
+  id_paket_attempt   Int
+  id_jawaban         Int
+  tanggal            DateTime?
+  short_answer       String?       @db.VarChar(45)
+  skor_point         Float?
+  subscriber         Subscribers   @relation(fields: [id_subscriber], references: [id_subscriber])
+  soalPaketSoal      SoalPaketSoal @relation(fields: [id_soal_paket_soal], references: [id_soal_paket_soal])
+  paketAttempt       PaketAttempt  @relation(fields: [id_paket_attempt], references: [id_paket_attempt])
+  jawabanSoal        JawabanSoal   @relation(fields: [id_jawaban], references: [id_jawaban])
+
+  @@map("history_pengerjaan_paket")
+}
+
+model AttachmentsSoal {
+  id_attachment   Int     @id @default(autoincrement())
+  path_attachment String? @db.VarChar(100)
+  keterangan      String? @db.VarChar(100)
+  id_soal         Int
+  soal            Soal    @relation(fields: [id_soal], references: [id_soal])
+
+  @@map("attachments_soal")
+}
+
+model InstitusiTarget {
+  id_target            Int                    @id @default(autoincrement())
+  nama_target          String?                @db.VarChar(100)
+  subscribersInstitusi SubscribersInstitusi[]
+
+  @@map("insitusi_target")
+}
+
+model SubscribersInstitusi {
+  id_institusi_subscriber Int             @id @default(autoincrement()) // <-- PERBAIKAN: Ditambah autoincrement
+  id_institusi            Int
+  id_subscriber           Int
+  institusi               InstitusiTarget @relation(fields: [id_institusi], references: [id_target])
+  subscriber              Subscribers     @relation(fields: [id_subscriber], references: [id_subscriber])
+
+  @@map("subscribers_insitusi")
+}
