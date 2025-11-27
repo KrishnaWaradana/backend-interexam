@@ -10,7 +10,10 @@ const adminRoutes = require('./routes/adminRoutes');
 
 // MIDDLEWARE WAJIB
 app.use(express.json()); 
-app.use(cors({ origin: 'http://localhost:3000' }));
+app.use(cors({ 
+    origin: ['http://localhost:5173', 'http://localhost:3000'], 
+    credentials: true 
+}));
 
 // ROUTE UTAMA
 app.use('/api/v1', adminRoutes);
