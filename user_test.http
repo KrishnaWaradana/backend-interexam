@@ -17,10 +17,10 @@ POST http://localhost:5000/api/v1/admin/user
 Content-Type: application/json
 
 {
-  "username": "hendraney",
-  "email_user": "hendraprawira751@gmail.com",
+  "username": "Natris",
+  "email_user": "narendraarya@gmail.com",
   "password": "PasswordTest123",
-  "nama_user": "User Untuk Update",
+  "nama_user": "Narendra Arya",
   "role": "Contributor", 
   "phone": "081234567890",
   "foto": "path/ke/foto/102020.jpg",
@@ -40,7 +40,7 @@ GET http://localhost:5000/api/v1/admin/users
 # Tujuan: Mengubah data user dasar DAN memperbarui relasi keahlian.
 # PENTING: Ganti ID di URL (/user/X) dengan ID yang dihasilkan oleh TEST 1.
 # Ganti angka 1 dengan ID user yang sebenarnya (misal: 37, 38, dll.)
-PUT http://localhost:5000/api/v1/admin/user/41
+PUT http://localhost:5000/api/v1/admin/user/2
 Content-Type: application/json
 
 {
@@ -57,4 +57,4 @@ Content-Type: application/json
 ### 4. TEST DELETE (DELETE)
 # Tujuan: Menghapus user yang telah diupdate.
 # PENTING: Ganti ID di URL (/user/X) dengan ID yang kamu gunakan di TEST 3.
-DELETE http://localhost:5000/api/v1/admin/user/41
+DELETE http://localhost:5000/api/v1/admin/user/1

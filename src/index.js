@@ -1,5 +1,4 @@
-// apps/backend/src/index.js (Code yang sudah diperbaiki)
-
+const path = require('path');
 const express = require('express');
 const cors = require('cors'); 
 const app = express();
@@ -14,7 +13,7 @@ app.use(cors({
     origin: ['http://localhost:5173', 'http://localhost:3000'], 
     credentials: true 
 }));
-
+app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 // ROUTE UTAMA
 app.use('/api/v1', adminRoutes);
 
