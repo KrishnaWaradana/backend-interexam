@@ -1,11 +1,24 @@
+// apps/backend/src/index.js (Code yang sudah diperbaiki)
+
 const express = require('express');
+const cors = require('cors'); 
 const app = express();
-const PORT = process.env.PORT || 3000;
 
-app.get('/', (req, res) => {
-  res.send('Hello from Node.js backend!');
-});
+const prisma = require('./config/prismaClient'); // ⬅️ IMPORT PRISMA DARI FILE CONFIG BARU
 
+const adminRoutes = require('./routes/adminRoutes'); 
+
+// MIDDLEWARE WAJIB
+app.use(express.json()); 
+app.use(cors({ origin: 'http://localhost:3000' }));
+
+// ROUTE UTAMA
+app.use('/api/v1', adminRoutes);
+
+const PORT = 5000;
 app.listen(PORT, () => {
-  console.log(`Server running on http://localhost:${PORT}`);
+    console.log(`Server Express berjalan di http://localhost:${PORT}`);
 });
+
+// ⚠️ Perhatian: Hapus 'module.exports' dari sini, karena Controller akan mengimpor Prisma langsung dari config.
+// Jika Controller juga membutuhkan app/port, gunakan const { app, prisma } = require('../index');
