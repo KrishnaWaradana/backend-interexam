@@ -36,23 +36,24 @@ exports.addUser = async (req, res) => {
     // Ambil data dasar dari req.body
     const { username, email_user, password, role, nama_user, phone, subject_ids } = req.body; 
     
-    // Ambil path foto dari Multer. Jika ada file, gunakan path-nya. Jika tidak, gunakan null.
-    const fotoPath = req.file ? req.file.path : null;
-    try {
-        // 1. Validasi Input Wajib, Role, dan Email Unik
-        // ... (Logika validasi dasar dan check unik tetap sama)
+    // Ambil path foto dari Multer
+    const fotoPath = req.file ? req.file.path : null; 
 
+    try {
         // 2. HASH PASSWORD
         const hashedPassword = await bcrypt.hash(password, 10);
         
-        // 3. Siapkan Data Relasi Kompetensi (Nested Writes)
-        const kompetensiData = subject_ids && subject_ids.length > 0 ? {
-            create: subject_ids.map(id => ({ 
-                id_subject: id,
-                // Kolom dokumen diisi dengan NULL karena tidak ada di schema Anda saat ini
-                // Pastikan id_subject valid
-            }))
-        } : undefined;
+        // 3. Siapkan Data Relasi Kompetensi (DIPERBAIKI)
+        let kompetensiData = undefined;
+        if (subject_ids) {
+            // Pastikan jadi array, lalu convert setiap ID jadi Integer
+            const idsArray = Array.isArray(subject_ids) ? subject_ids : [subject_ids];
+            kompetensiData = {
+                create: idsArray.map(id => ({ 
+                    id_subject: parseInt(id) // <--- KUNCINYA DI SINI (parseInt)
+                }))
+            };
+        }
 
         // 4. SIMPAN KE DATABASE
         const newUser = await prisma.users.create({
@@ -60,18 +61,20 @@ exports.addUser = async (req, res) => {
                 username, email_user, nama_user, password: hashedPassword, 
                 role: role || 'Contributor', 
                 phone, 
-                foto: fotoPath, // ⬅️ Menyimpan path dari Multer
-                kompetensi: kompetensiData // Menyimpan relasi
+                foto: fotoPath, 
+                kompetensi: kompetensiData 
             }
         });
 
         res.status(201).json({ message: 'User berhasil ditambahkan.', data: { id_user: newUser.id_user } });
 
     } catch (error) {
-        // Jika ada crash, hapus file yang sudah terlanjur di-upload oleh Multer
-        if (req.file) { fs.unlinkSync(req.file.path); } 
+        // Hapus file jika gagal
+        if (req.file && fs.existsSync(req.file.path)) { 
+            fs.unlinkSync(req.file.path); 
+        } 
         console.error('Prisma/Database Error saat CREATE:', error); 
-        res.status(500).json({ message: 'Gagal memproses data di server.' });
+        res.status(500).json({ message: 'Gagal memproses data di server.', error: error.message });
     }
 };
 // --- 2. CRUD READ (getAllUsers) ---
