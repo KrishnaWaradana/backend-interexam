@@ -37,7 +37,7 @@ exports.addUser = async (req, res) => {
     const { username, email_user, password, role, nama_user, phone, subject_ids } = req.body; 
     
     // Ambil path foto dari Multer. Jika ada file, gunakan path-nya. Jika tidak, gunakan null.
-    const fotoPath = req.file ? req.file.path : (fotoFromBody || null); 
+    const fotoPath = req.file ? req.file.path : null;
     try {
         // 1. Validasi Input Wajib, Role, dan Email Unik
         // ... (Logika validasi dasar dan check unik tetap sama)

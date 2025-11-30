@@ -1,43 +1,42 @@
-// apps/backend/src/routes/adminRoutes.js
-
 const express = require('express');
 const router = express.Router();
 const userController = require('../controllers/userController'); 
-const multer = require('multer'); // Import Multer
+const multer = require('multer'); 
 const path = require('path');
+const fs = require('fs'); // <--- PENTING: Tambahkan ini
 
+// Setup penyimpanan file
 const storage = multer.diskStorage({
     destination: (req, file, cb) => {
-        // Tentukan folder di mana file akan disimpan (DIPERLUKAN UNTUK UPLOAD)
-        cb(null, path.join(__dirname, '..', 'uploads', 'photos')); 
+        // Arahkan ke folder uploads/photos di luar src
+        const uploadPath = path.join(__dirname, '../../uploads/photos');
+
+        // CEK: Jika folder tidak ada, buat dulu!
+        if (!fs.existsSync(uploadPath)) {
+            fs.mkdirSync(uploadPath, { recursive: true });
+        }
+
+        cb(null, uploadPath); 
     },
     filename: (req, file, cb) => {
-        // Beri nama file unik
-        cb(null, 'user-' + Date.now() + '-' + file.originalname);
+        // Nama file unik
+        const uniqueName = 'user-' + Date.now() + '-' + file.originalname.replace(/\s+/g, '-');
+        cb(null, uniqueName);
     }
 });
 
 const upload = multer({ storage: storage });
 
-// 0. GET ALL ROLES (Untuk dropdown Role)
+// Routes
 router.get('/admin/roles', userController.getAllowedRoles); 
-
-// 0.5 GET ALL SUBJECTS (Untuk dropdown Keahlian)
 router.get('/admin/subjects', userController.getAllSubjects); 
-
-// 1. CREATE
-router.post('/admin/user', 
-    upload.single('profile_picture'), 
-    userController.addUser 
-);
-// 2. READ All
 router.get('/admin/users', userController.getAllUsers); 
-
-// 3. UPDATE
-router.put('/admin/user/:id', 
-    upload.single('profile_picture'), // ⬅️ Middleware untuk file upload
-    userController.updateUser);
-// 4. DELETE
 router.delete('/admin/user/:id', userController.deleteUser); 
+
+// Create User (Upload Foto)
+router.post('/admin/user', upload.single('profile_picture'), userController.addUser);
+
+// Update User (Upload Foto)
+router.put('/admin/user/:id', upload.single('profile_picture'), userController.updateUser);
 
 module.exports = router;
