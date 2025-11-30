@@ -1,17 +1,29 @@
 // apps/backend/src/controllers/userController.js
 
-const bcrypt = require('bcryptjs'); 
+const bcrypt = require('bcryptjs');
 const prisma = require('../config/prismaClient');
-const allowedRoles = ['Admin', 'Validator', 'Contributor'];
-const fs = require('fs');
+const fs = require('fs'); // Import file system module
+const path = require('path');
 
+const allowedRoles = ['Admin', 'Validator', 'Contributor'];
+
+// --- HELPER: Function to delete file ---
+const deleteFile = (filePath) => {
+    if (filePath && fs.existsSync(filePath)) {
+        try {
+            fs.unlinkSync(filePath);
+        } catch (err) {
+            console.error("Failed to delete file:", err);
+        }
+    }
+};
 
 exports.getAllowedRoles = (req, res) => {
-    res.status(200).json({ data: allowedRoles }); 
+    res.status(200).json({ data: allowedRoles });
 };
+
 exports.getAllSubjects = async (req, res) => {
     try {
-       
         const subjects = await prisma.subjects.findMany({
             select: {
                 id_subject: true,
@@ -20,9 +32,9 @@ exports.getAllSubjects = async (req, res) => {
             orderBy: { nama_subject: 'asc' }
         });
 
-        res.status(200).json({ 
+        res.status(200).json({
             message: 'Daftar subjek/keahlian berhasil diambil.',
-            data: subjects 
+            data: subjects
         });
 
     } catch (error) {
@@ -30,27 +42,54 @@ exports.getAllSubjects = async (req, res) => {
         res.status(500).json({ message: 'Gagal mengambil daftar subjek.' });
     }
 };
+
 // --- 1. CRUD CREATE (addUser) ---
 
 exports.addUser = async (req, res) => {
     // Ambil data dasar dari req.body
-    const { username, email_user, password, role, nama_user, phone, subject_ids } = req.body; 
-    
-    // Ambil path foto dari Multer
-    const fotoPath = req.file ? req.file.path : null; 
+    const { username, email_user, password, role, nama_user, phone, subject_ids } = req.body;
+
+    // Ambil path foto dari Multer. Jika ada file, gunakan path-nya. Jika tidak, gunakan null.
+    // FIX: Removed 'fotoFromBody' which caused the error
+    const fotoPath = req.file ? req.file.path : null;
 
     try {
+        // 1. Validasi Duplikat (Username, Email, Phone)
+        const existingUser = await prisma.users.findFirst({
+            where: {
+                OR: [
+                    { email_user: email_user },
+                    { username: username },
+                    { phone: phone }
+                ]
+            }
+        });
+
+        if (existingUser) {
+            // Jika user sudah ada, hapus foto yang baru diupload agar tidak nyampah
+            if (fotoPath) deleteFile(fotoPath);
+
+            let message = 'User details already exist.';
+            if (existingUser.email_user === email_user) message = 'Email already in use.';
+            if (existingUser.username === username) message = 'Username already taken.';
+            if (existingUser.phone === phone) message = 'Phone number already registered.';
+
+            return res.status(409).json({ message });
+        }
+
         // 2. HASH PASSWORD
         const hashedPassword = await bcrypt.hash(password, 10);
-        
-        // 3. Siapkan Data Relasi Kompetensi (DIPERBAIKI)
+
+        // 3. Siapkan Data Relasi Kompetensi (Nested Writes)
         let kompetensiData = undefined;
         if (subject_ids) {
             // Pastikan jadi array, lalu convert setiap ID jadi Integer
+            // FIX: Handle if subject_ids is a single string or an array
             const idsArray = Array.isArray(subject_ids) ? subject_ids : [subject_ids];
+            
             kompetensiData = {
-                create: idsArray.map(id => ({ 
-                    id_subject: parseInt(id) // <--- KUNCINYA DI SINI (parseInt)
+                create: idsArray.map(id => ({
+                    id_subject: parseInt(id) // FIX: Ensure ID is parsed to Integer
                 }))
             };
         }
@@ -58,11 +97,14 @@ exports.addUser = async (req, res) => {
         // 4. SIMPAN KE DATABASE
         const newUser = await prisma.users.create({
             data: {
-                username, email_user, nama_user, password: hashedPassword, 
-                role: role || 'Contributor', 
-                phone, 
-                foto: fotoPath, 
-                kompetensi: kompetensiData 
+                username,
+                email_user,
+                nama_user,
+                password: hashedPassword,
+                role: role || 'Contributor',
+                phone,
+                foto: fotoPath, // Menyimpan path dari Multer
+                kompetensi: kompetensiData // Menyimpan relasi
             }
         });
 
@@ -70,26 +112,25 @@ exports.addUser = async (req, res) => {
 
     } catch (error) {
         // Hapus file jika gagal
-        if (req.file && fs.existsSync(req.file.path)) { 
-            fs.unlinkSync(req.file.path); 
-        } 
-        console.error('Prisma/Database Error saat CREATE:', error); 
+        if (fotoPath) deleteFile(fotoPath);
+
+        console.error('Prisma/Database Error saat CREATE:', error);
         res.status(500).json({ message: 'Gagal memproses data di server.', error: error.message });
     }
 };
+
 // --- 2. CRUD READ (getAllUsers) ---
 exports.getAllUsers = async (req, res) => {
     try {
-        
-        const usersData = await prisma.users.findMany({ 
+        const usersData = await prisma.users.findMany({
             select: {
-                id_user: true, username: true, email_user: true, nama_user: true, 
-                role: true, phone: true, foto: true 
+                id_user: true, username: true, email_user: true, nama_user: true,
+                role: true, phone: true, foto: true
             },
-            orderBy: { id_user: 'asc' } 
+            orderBy: { id_user: 'asc' }
         });
 
-        res.status(200).json({ message: 'Daftar user berhasil diambil.', data: usersData }); 
+        res.status(200).json({ message: 'Daftar user berhasil diambil.', data: usersData });
 
     } catch (error) {
         console.error('Prisma/Database Error saat READ:', error);
@@ -99,99 +140,102 @@ exports.getAllUsers = async (req, res) => {
 
 // --- 3. CRUD UPDATE (updateUser) ---
 exports.updateUser = async (req, res) => {
-    const userId = parseInt(req.params.id); 
+    const userId = parseInt(req.params.id);
     // Ambil SEMUA data, termasuk password, foto, dan subject_ids
-    const { username, email_user, nama_user, role, phone, foto, subject_ids, password } = req.body; 
+    const { username, email_user, nama_user, role, phone, subject_ids, password } = req.body;
+    
+    // Check if new file uploaded
+    const newFotoPath = req.file ? req.file.path : null;
 
     try {
-        // 1. Validasi Dasar & Cek Keberadaan User (Logika tetap sama)
-        if (role && !allowedRoles.includes(role)) { 
-            return res.status(400).json({ message: `Nilai role '${role}' tidak valid.` }); 
+        // 1. Validasi Dasar & Cek Keberadaan User
+        if (role && !allowedRoles.includes(role)) {
+            if (newFotoPath) deleteFile(newFotoPath);
+            return res.status(400).json({ message: `Nilai role '${role}' tidak valid.` });
         }
-        
+
         const existingUser = await prisma.users.findUnique({ where: { id_user: userId } });
-        if (!existingUser) { return res.status(404).json({ message: `User dengan ID ${userId} tidak ditemukan.` }); }
-        
+        if (!existingUser) { 
+            if (newFotoPath) deleteFile(newFotoPath);
+            return res.status(404).json({ message: `User dengan ID ${userId} tidak ditemukan.` }); 
+        }
+
         // Cek Email Unik (Jika email diubah)
         if (email_user && email_user !== existingUser.email_user) {
             const emailCheck = await prisma.users.findFirst({ where: { email_user } });
-            if (emailCheck) { return res.status(409).json({ message: 'Email baru sudah digunakan.' }); }
+            if (emailCheck) { 
+                if (newFotoPath) deleteFile(newFotoPath);
+                return res.status(409).json({ message: 'Email baru sudah digunakan.' }); 
+            }
         }
 
-        // 2. Siapkan Objek Data untuk Update (KOREKSI UTAMA ADA DI SINI)
+        // 2. Siapkan Objek Data untuk Update
         const updateData = {};
+
+        if (username) updateData.username = username;
+        if (nama_user) updateData.nama_user = nama_user;
+        if (role) updateData.role = role;
+        if (phone) updateData.phone = phone;
+        if (email_user) updateData.email_user = email_user;
         
-        // ⬇️ GUNAKAN 'IN REQ.BODY' UNTUK MEMASTIKAN DATA TERBACA ⬇️
-        if ('username' in req.body) updateData.username = username;
-        if ('nama_user' in req.body) updateData.nama_user = nama_user; // ⬅️ Masalah Utama Anda
-        if ('role' in req.body) updateData.role = role;               // ⬅️ Masalah Utama Anda
-        if ('phone' in req.body) updateData.phone = phone;
-        if ('email_user' in req.body) updateData.email_user = email_user;
-        if ('foto' in req.body) updateData.foto = foto; // Foto path dari JSON body
-        // ⬆️ FIELD DASAR SELESAI ⬆️
+        // Update Foto Logic
+        if (newFotoPath) {
+            updateData.foto = newFotoPath;
+            // Hapus foto lama jika ada
+            if (existingUser.foto) deleteFile(existingUser.foto);
+        }
 
         // 3. Penanganan Password (Wajib Hashing)
-        if (password) { 
+        if (password) {
             const hashedPassword = await bcrypt.hash(password, 10);
-            updateData.password = hashedPassword; 
+            updateData.password = hashedPassword;
         }
-        
+
         // 4. Update Relasi Keahlian (DELETE-CREATE pattern)
         if (subject_ids !== undefined) {
             // HAPUS semua relasi kompetensi yang lama
             await prisma.kompetensiUser.deleteMany({ where: { id_user: userId } });
-            
+
             // Buat objek data relasi baru
-            const newCompetencies = subject_ids.map(id => ({ id_subject: id }));
-            
+            const idsArray = Array.isArray(subject_ids) ? subject_ids : [subject_ids];
+            const newCompetencies = idsArray.map(id => ({ id_subject: parseInt(id) }));
+
             updateData.kompetensi = { create: newCompetencies };
-        }
-        
-        // 5. Penanganan Foto Multer (Tambahan: Jika ada file upload baru)
-        if (req.file) { 
-            // Tambahkan logika hapus foto lama dari disk di sini
-            updateData.foto = req.file.path; // Update path dari Multer
         }
 
         // 6. Final Update
-        if (Object.keys(updateData).length === 0) { 
-            return res.status(400).json({ message: 'Tidak ada data valid yang dikirim untuk diperbarui.' }); 
-        }
-
         const updatedUser = await prisma.users.update({
-            where: { id_user: userId }, 
+            where: { id_user: userId },
             data: updateData,
-            select: { id_user: true, nama_user: true, email_user: true, role: true, foto: true } 
+            select: { id_user: true, nama_user: true, email_user: true, role: true, foto: true }
         });
 
-        res.status(200).json({ message: `Data user '${updatedUser.nama_user}' berhasil diperbarui.`, data: updatedUser }); 
+        res.status(200).json({ message: `Data user '${updatedUser.nama_user}' berhasil diperbarui.`, data: updatedUser });
 
     } catch (error) {
+        if (newFotoPath) deleteFile(newFotoPath);
         console.error('Prisma/Database Error saat UPDATE:', error);
-        // Tambahkan logika untuk menghapus file yang gagal di-commit
-        res.status(500).json({ message: 'Gagal memperbarui data user.' });
+        res.status(500).json({ message: 'Gagal memperbarui data user.', error: error.message });
     }
 };
+
 // --- 4. CRUD DELETE (deleteUser) ---
 exports.deleteUser = async (req, res) => {
-    const userId = parseInt(req.params.id); 
+    const userId = parseInt(req.params.id);
 
     try {
         const userToDelete = await prisma.users.findUnique({ where: { id_user: userId } });
-        if (!userToDelete) { 
-            return res.status(404).json({ message: `User dengan ID ${userId} tidak ditemukan.` }); 
+        if (!userToDelete) {
+            return res.status(404).json({ message: `User dengan ID ${userId} tidak ditemukan.` });
         }
-        
-       
-        
+
         // 1. Hapus Relasi Many-to-Many (Kompetensi/Keahlian)
         await prisma.kompetensiUser.deleteMany({
             where: { id_user: userId }
         });
-        
+
         // 2. Hapus Relasi Status (UserStatus)
-        
-        await prisma.userStatus.deleteMany({ 
+        await prisma.userStatus.deleteMany({
             where: { OR: [{ id_user: userId }, { id_admin: userId }] }
         });
 
@@ -199,21 +243,24 @@ exports.deleteUser = async (req, res) => {
         await prisma.paketSoal.deleteMany({
             where: { id_creator: userId }
         });
-        
+
         // 4. Hapus Validasi Soal yang Dibuat User ini (Jika User adalah Validator)
         await prisma.validasiSoal.deleteMany({
             where: { id_validator: userId }
         });
         
+        // 5. Hapus Foto Profil dari disk
+        if (userToDelete.foto) {
+            deleteFile(userToDelete.foto);
+        }
 
-        // 5. Hapus User Utama
+        // 6. Hapus User Utama
         await prisma.users.delete({ where: { id_user: userId } });
 
-        res.status(200).json({ message: `User '${userToDelete.nama_user}' berhasil dihapus secara total.`, deletedUserId: userId }); 
+        res.status(200).json({ message: `User '${userToDelete.nama_user}' berhasil dihapus secara total.`, deletedUserId: userId });
 
     } catch (error) {
-        // Jika masih ada error, kemungkinan error di tabel soal (id_contributor)
         console.error('Prisma/Database Error saat DELETE:', error);
-        res.status(500).json({ message: 'Gagal menghapus: Ada data relasi lain yang tidak terhapus.' });
+        res.status(500).json({ message: 'Gagal menghapus user.', error: error.message });
     }
 };
