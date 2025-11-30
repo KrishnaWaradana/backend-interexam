@@ -136,7 +136,37 @@ exports.getAllUsers = async (req, res) => {
         res.status(500).json({ message: 'Gagal mengambil data user dari server.' });
     }
 };
+exports.getUserById = async (req, res) => {
+    const userId = parseInt(req.params.id);
+    try {
+        // Ambil satu user berdasarkan ID
+        const user = await prisma.users.findUnique({
+            where: { id_user: userId },
+            include: {
+                kompetensi: true // Penting: Ambil juga data keahliannya
+            }
+        });
 
+        if (!user) {
+            return res.status(404).json({ message: `User dengan ID ${userId} tidak ditemukan.` });
+        }
+
+        // Format data agar frontend lebih mudah membacanya (terutama subject_ids)
+        const formattedUser = {
+            ...user,
+            subject_ids: user.kompetensi.map(k => k.id_subject) // Ambil ID-nya saja jadi array [1, 2]
+        };
+
+        res.status(200).json({ 
+            message: 'Data user ditemukan.', 
+            data: formattedUser 
+        });
+
+    } catch (error) {
+        console.error('Prisma Error saat GET User By ID:', error);
+        res.status(500).json({ message: 'Gagal mengambil data user.' });
+    }
+};
 // --- 3. CRUD UPDATE (updateUser) ---
 exports.updateUser = async (req, res) => {
     const userId = parseInt(req.params.id);

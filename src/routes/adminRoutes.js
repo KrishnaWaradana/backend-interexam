@@ -32,7 +32,7 @@ router.get('/admin/roles', userController.getAllowedRoles);
 router.get('/admin/subjects', userController.getAllSubjects); 
 router.get('/admin/users', userController.getAllUsers); 
 router.delete('/admin/user/:id', userController.deleteUser); 
-
+router.get('/admin/user/:id', userController.getUserById);
 // Create User (Upload Foto)
 router.post('/admin/user', upload.single('profile_picture'), userController.addUser);
 
