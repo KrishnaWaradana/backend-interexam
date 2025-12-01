@@ -113,8 +113,9 @@ model Users {
   password   String?  @db.VarChar(100)
   role       Role?
   nama_user  String?  @db.VarChar(45)
-  email_user String?  @db.VarChar(45)
+  email_user String? @unique @db.VarChar(45)
   phone      String?  @db.VarChar(45)
+  googleId   String? @unique @db.VarChar(255)
   
   // Field Foto
   foto       String?  @db.VarChar(255)
@@ -277,6 +278,7 @@ model Subscribers {
   password            String?               @db.VarChar(100)
   nama_subscriber     String?               @db.VarChar(45)
   email_subscriber    String?               @unique @db.VarChar(45)
+  googleId            String?               @unique @db.VarChar(255)
   phone               String?               @unique @db.VarChar(45)
   reports             Reports[]
   favorites           Favorites[]
