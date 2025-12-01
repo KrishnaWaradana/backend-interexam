@@ -1,0 +1,60 @@
+### 0.0 GET ALL ROLES (UNTUK DROPDOWN ROLE)
+# Tujuan: Memverifikasi opsi Role yang valid.
+GET http://localhost:5000/api/v1/admin/roles
+
+---
+
+### 0.5 GET ALL SUBJECTS (UNTUK DROPDOWN KEAHLIAN)
+# Tujuan: Memverifikasi daftar Subjects tersedia untuk dropdown.
+GET http://localhost:5000/api/v1/admin/subjects
+
+---
+
+### 1. TEST CREATE (POST)
+# Tujuan: Menambah User Baru (CREATE) dan membuat relasi keahlian.
+# CATATAN PENTING: Ganti email_user setiap kali diuji (atau akan mendapat 409 Conflict).
+POST http://localhost:5000/api/v1/admin/user
+Content-Type: application/json
+
+{
+  "username": "Natris",
+  "email_user": "narendraarya@gmail.com",
+  "password": "PasswordTest123",
+  "nama_user": "Narendra Arya",
+  "role": "Contributor", 
+  "phone": "081234567890",
+  "foto": "path/ke/foto/102020.jpg",
+  "subject_ids": [1] 
+  
+}
+
+
+
+### 2. TEST READ ALL (GET)
+# Tujuan: Memastikan User yang baru dibuat muncul di daftar.
+GET http://localhost:5000/api/v1/admin/users
+
+---
+
+### 3. TEST UPDATE (PUT)
+# Tujuan: Mengubah data user dasar DAN memperbarui relasi keahlian.
+# PENTING: Ganti ID di URL (/user/X) dengan ID yang dihasilkan oleh TEST 1.
+# Ganti angka 1 dengan ID user yang sebenarnya (misal: 37, 38, dll.)
+PUT http://localhost:5000/api/v1/admin/user/2
+Content-Type: application/json
+
+{
+  "nama_user": "mangadi",
+  "role": "Validator", 
+  "phone": "0899887766",
+  "foto": "path/ke/foto/update_admin.jpg",
+  "subject_ids": [2] 
+  
+}
+
+
+
+### 4. TEST DELETE (DELETE)
+# Tujuan: Menghapus user yang telah diupdate.
+# PENTING: Ganti ID di URL (/user/X) dengan ID yang kamu gunakan di TEST 3.
+DELETE http://localhost:5000/api/v1/admin/user/1
