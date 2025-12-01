@@ -90,7 +90,7 @@ Content-Type: application/json
 
 ### 4. UPDATE SUBJECT (PUT)
 # PENTING: Ganti ID X dengan ID yang dibuat di TEST 1 (misalnya ID 3).
-PUT http://localhost:5000/api/v1/admin/subject/1
+PUT http://localhost:5000/api/v1/admin/subject/2
 Content-Type: application/json
 
 {
