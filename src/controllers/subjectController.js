@@ -39,16 +39,30 @@ exports.addSubject = async (req, res) => {
 exports.getAllSubjects = async (req, res) => {
     try {
         const subjects = await prisma.subjects.findMany({
-            select: { id_subject: true, nama_subject: true, keterangan: true },
+            select: { id_subject: true, nama_subject: true, keterangan: true }, // Sudah meminta 3 field
             orderBy: { nama_subject: 'asc' }
         });
 
-        res.status(200).json({ message: 'Daftar Subject berhasil diambil.', data: subjects });
+        // PERBAIKAN DI SINI: Memaksa field 'keterangan' ada di setiap objek JSON
+        const subjectsWithKeterangan = subjects.map(s => ({
+            id_subject: s.id_subject,
+            nama_subject: s.nama_subject,
+            // Jika s.keterangan adalah NULL, ubah menjadi String Kosong ("")
+            keterangan: s.keterangan || "" 
+        }));
+
+
+        res.status(200).json({ 
+            message: 'Daftar Subject berhasil diambil.', 
+            data: subjectsWithKeterangan // Kirim data yang sudah diformat
+        });
+
     } catch (error) {
         console.error('Prisma Error saat READ Subject:', error);
         res.status(500).json({ message: 'Gagal mengambil data Subject.' });
     }
 };
+
 
 // --- 3. CRUD UPDATE (Update Subject) ---
 exports.updateSubject = async (req, res) => {
