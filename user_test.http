@@ -59,13 +59,47 @@ Content-Type: application/json
 # PENTING: Ganti ID di URL (/user/X) dengan ID yang kamu gunakan di TEST 3.
 DELETE http://localhost:5000/api/v1/admin/user/1
 
-### Create New Topic
-POST http://localhost:5000/api/v1/topics
+
+### 1. CREATE SUBJECT (POST)
+# Tujuan: Membuat Subject baru
+POST http://localhost:5000/api/v1/admin/subject
 Content-Type: application/json
 
 {
-  "nama_topics": "Aljabar Linear",
-  "id_subjects": 1, 
-  "id_category": 2,
-  "keterangan": "Materi kelas 10 semester 1"
+  "nama_subject": "Fisika Kuantum",
+  "keterangan": "Mata pelajaran Fisika S2"
 }
+
+
+### 2. READ ALL SUBJECTS (GET)
+# Tujuan: Memastikan Subject yang baru dibuat muncul (Harusnya 3 Subject: Mat, Ipa, Fisika Dasar)
+GET http://localhost:5000/api/v1/admin/subjects
+
+---
+
+### 3. TEST DUPLICATE (POST)
+# Tujuan: Menguji validasi 409 Conflict. Ini harus gagal.
+POST http://localhost:5000/api/v1/admin/subject
+Content-Type: application/json
+
+{
+  "nama_subject": "Fisika Dasar",
+  "keterangan": "Ini harus gagal"
+}
+
+
+### 4. UPDATE SUBJECT (PUT)
+# PENTING: Ganti ID X dengan ID yang dibuat di TEST 1 (misalnya ID 3).
+PUT http://localhost:5000/api/v1/admin/subject/2
+Content-Type: application/json
+
+{
+  "nama_subject": "Fisika Terapan",
+  "keterangan": "Mata pelajaran Fisika Terapan"
+}
+
+
+
+### 5. DELETE SUBJECT (DELETE)
+# PENTING: Ganti ID X dengan ID yang diupdate di TEST 4 (misalnya ID 3).
+DELETE http://localhost:5000/api/v1/admin/subject/1
