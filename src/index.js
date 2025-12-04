@@ -6,6 +6,7 @@ const app = express();
 const prisma = require('./config/prismaClient'); // ⬅️ IMPORT PRISMA DARI FILE CONFIG BARU
 
 const adminRoutes = require('./routes/adminRoutes'); 
+const topicRoutes = require('./routes/topicRoutes');
 
 // MIDDLEWARE WAJIB
 app.use(express.json()); 
@@ -16,6 +17,7 @@ app.use(cors({
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 // ROUTE UTAMA
 app.use('/api/v1', adminRoutes);
+app.use('/api/v1/topics', topicRoutes);
 
 const PORT = 5000;
 app.listen(PORT, () => {

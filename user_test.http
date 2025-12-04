@@ -58,3 +58,14 @@ Content-Type: application/json
 # Tujuan: Menghapus user yang telah diupdate.
 # PENTING: Ganti ID di URL (/user/X) dengan ID yang kamu gunakan di TEST 3.
 DELETE http://localhost:5000/api/v1/admin/user/1
+
+### Create New Topic
+POST http://localhost:5000/api/v1/topics
+Content-Type: application/json
+
+{
+  "nama_topics": "Aljabar Linear",
+  "id_subjects": 1, 
+  "id_category": 2,
+  "keterangan": "Materi kelas 10 semester 1"
+}
