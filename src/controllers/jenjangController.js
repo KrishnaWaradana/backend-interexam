@@ -6,20 +6,23 @@ const jenjangController = {
     const { nama_jenjang, keterangan } = req.body;
 
     try {
-      // Validasi Input
+      // 1. Validasi Input Wajib
       if (!nama_jenjang) {
         return res.status(400).json({ error: "Nama jenjang wajib diisi" });
       }
 
-      // Cek Duplikasi (Optional - agar tidak ada 2 SD)
+      // 2. Cek Duplikasi (CREATE) - Case Insensitive
       const existing = await prisma.jenjang.findFirst({
-        where: { nama_jenjang: nama_jenjang }
+        where: { 
+            nama_jenjang: { equals: nama_jenjang, mode: 'insensitive' } 
+        }
       });
+
       if (existing) {
-        return res.status(409).json({ error: "Jenjang tersebut sudah ada" });
+        return res.status(409).json({ error: `Jenjang dengan nama '${nama_jenjang}' sudah ada.` });
       }
 
-      // Simpan ke DB
+      // 3. Simpan ke DB
       const newJenjang = await prisma.jenjang.create({
         data: {
           nama_jenjang,
@@ -38,11 +41,11 @@ const jenjangController = {
     }
   },
 
-  // --- 2. READ ALL JENJANG (Dipakai Dropdown Topik) ---
+  // --- 2. READ ALL JENJANG ---
   getAllJenjang: async (req, res) => {
     try {
       const jenjangList = await prisma.jenjang.findMany({
-        orderBy: { id_jenjang: 'asc' } // Urutkan dari ID kecil (SD -> Kuliah)
+        orderBy: { id_jenjang: 'asc' }
       });
       
       res.status(200).json({ 
@@ -59,22 +62,49 @@ const jenjangController = {
   updateJenjang: async (req, res) => {
     const { id } = req.params;
     const { nama_jenjang, keterangan } = req.body;
+    const jenjangId = parseInt(id);
 
     try {
+      // 1. Cek apakah Jenjang ada
+      const currentJenjang = await prisma.jenjang.findUnique({
+        where: { id_jenjang: jenjangId }
+      });
+
+      if (!currentJenjang) {
+        return res.status(404).json({ error: "Jenjang tidak ditemukan" });
+      }
+
+      // 2. Cek Duplikasi (UPDATE) - Case Insensitive
+      if (nama_jenjang && nama_jenjang !== currentJenjang.nama_jenjang) {
+          const checkDuplicate = await prisma.jenjang.findFirst({
+            where: {
+                nama_jenjang: { equals: nama_jenjang, mode: 'insensitive' },
+                // Pastikan yang dicek BUKAN diri sendiri (exclude current ID)
+                NOT: { id_jenjang: jenjangId }
+            }
+          });
+
+          if (checkDuplicate) {
+            return res.status(409).json({ error: `Jenjang '${nama_jenjang}' sudah digunakan.` });
+          }
+      }
+
+      // 3. Update Data
       const updatedJenjang = await prisma.jenjang.update({
-        where: { id_jenjang: parseInt(id) },
-        data: { nama_jenjang, keterangan }
+        where: { id_jenjang: jenjangId },
+        data: { 
+            nama_jenjang: nama_jenjang || currentJenjang.nama_jenjang, 
+            keterangan: keterangan 
+        }
       });
 
       res.status(200).json({ 
         message: "Jenjang berhasil diupdate", 
         data: updatedJenjang 
       });
+
     } catch (error) {
-      // Handle jika ID tidak ditemukan
-      if (error.code === 'P2025') {
-        return res.status(404).json({ error: "Jenjang tidak ditemukan" });
-      }
+      console.error("Error Update Jenjang:", error);
       res.status(500).json({ error: "Gagal update jenjang" });
     }
   },
@@ -90,12 +120,13 @@ const jenjangController = {
       res.status(200).json({ message: "Jenjang berhasil dihapus" });
 
     } catch (error) {
-      // PENTING: Cek error Foreign Key (P2003)
-      // Ini terjadi jika Anda mencoba menghapus 'SMA' padahal ada Topik yang pakai 'SMA'
       if (error.code === 'P2003') {
           return res.status(409).json({ 
-            error: "Gagal hapus: Jenjang ini sedang digunakan oleh Topik atau data lain." 
+            error: "Gagal hapus: Jenjang ini sedang digunakan oleh Topik. Hapus Topik terkait terlebih dahulu." 
           });
+      }
+      if (error.code === 'P2025') {
+          return res.status(404).json({ error: "Jenjang tidak ditemukan." });
       }
       res.status(500).json({ error: "Gagal hapus jenjang" });
     }
