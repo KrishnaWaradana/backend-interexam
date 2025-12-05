@@ -1,18 +1,36 @@
 const prisma = require('../config/prismaClient');
 
 const topicController = {
-  // --- 1. CREATE TOPIC ---
+  
+  // --- 1. CREATE TOPIC (Dengan Cek Duplikat) ---
   createTopic: async (req, res) => {
     try {
-      // Input sesuai field di Figma
       const { nama_topics, keterangan, id_subjects, id_jenjang } = req.body;
 
-      // Validasi: Pastikan semua dropdown dipilih dan teks diisi
+      // A. Validasi Input Kosong
       if (!nama_topics || !id_subjects || !id_jenjang) {
         return res.status(400).json({ error: "Nama topik, Mata Pelajaran, dan Jenjang wajib diisi" });
       }
 
-      // Simpan langsung ke database
+      // B. CEK DUPLIKAT DATA
+      // Kita cari di database: Apakah ada topik dengan Nama, Subject, DAN Jenjang yang sama?
+      const existingTopic = await prisma.topics.findFirst({
+        where: {
+          nama_topics: {
+            equals: nama_topics,
+            mode: 'insensitive' // Agar 'Aljabar' dan 'aljabar' dianggap sama
+          },
+          id_subjects: parseInt(id_subjects),
+          id_jenjang: parseInt(id_jenjang)
+        }
+      });
+
+      // Jika data ditemukan, berarti duplikat -> Kirim Error 409
+      if (existingTopic) {
+        return res.status(409).json({ error: "Topik ini sudah ada di Mata Pelajaran dan Jenjang tersebut." });
+      }
+
+      // C. Simpan ke Database (Jika aman)
       const newTopic = await prisma.topics.create({
         data: {
           nama_topics: nama_topics,
@@ -33,22 +51,22 @@ const topicController = {
     }
   },
 
-  // --- 2. READ ALL TOPICS 
+  // --- 2. READ ALL TOPICS ---
   getAllTopics: async (req, res) => {
     try {
       const topics = await prisma.topics.findMany({
         include: {
-          subject: true, // Ambil nama Subject (Matematika, dll)
-          jenjang: true  // Ambil nama Jenjang (SD, SMP, dll)
+          subject: true, // Relasi ke tabel subjects
+          jenjang: true  // Relasi ke tabel jenjang
         },
         orderBy: { id_topics: 'desc' }
       });
 
       const formattedTopics = topics.map(topic => ({
         id_topics: topic.id_topics,
-        nama_topics: topic.nama_topics, // Kolom "Topik"
-        mata_pelajaran: topic.subject?.nama_subject || "-", // Kolom "Mata Pelajaran"
-        jenjang: topic.jenjang?.nama_jenjang || "-", // (Data tambahan jika mau ditampilkan)
+        nama_topics: topic.nama_topics,
+        mata_pelajaran: topic.subject?.nama_subject || "-",
+        jenjang: topic.jenjang?.nama_jenjang || "-",
         keterangan: topic.keterangan
       }));
 
@@ -81,7 +99,6 @@ const topicController = {
     try {
       const { id } = req.params;
       const { nama_topics, keterangan, id_subjects, id_jenjang } = req.body;
-
       const updatedTopic = await prisma.topics.update({
         where: { id_topics: parseInt(id) },
         data: {

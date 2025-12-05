@@ -136,3 +136,15 @@ Content-Type: application/json
 ### 9. DELETE TOPIC (DELETE)
 # Hapus topik berdasarkan ID Topik
 DELETE http://localhost:5000/api/v1/topics/3
+
+### 10. TEST DUPLICATE TOPIC (POST)
+# Tujuan: Menguji validasi duplikasi. 
+POST http://localhost:5000/api/v1/topics
+Content-Type: application/json
+
+{
+  "nama_topics": "Ide Usaha",
+  "id_subjects": 8, 
+  "id_jenjang": 5,
+  "keterangan": "Coba duplikat, harusnya gagal"
+}
