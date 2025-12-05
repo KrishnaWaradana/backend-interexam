@@ -7,6 +7,7 @@ const prisma = require('./config/prismaClient'); // ⬅️ IMPORT PRISMA DARI FI
 
 const adminRoutes = require('./routes/adminRoutes'); 
 const topicRoutes = require('./routes/topicRoutes');
+const authRoutes = require('./routes/authRoutes');
 const jenjangRoutes = require('./routes/jenjangRoutes');
 
 // MIDDLEWARE WAJIB
@@ -19,6 +20,7 @@ app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 // ROUTE UTAMA
 app.use('/api/v1', adminRoutes);
 app.use('/api/v1/topics', topicRoutes);
+app.use('/api/auth', authRoutes);
 app.use('/api/v1/admin/jenjang', jenjangRoutes); 
 
 const PORT = 5000;
