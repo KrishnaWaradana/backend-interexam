@@ -123,7 +123,7 @@ Content-Type: application/json
 GET http://localhost:5000/api/v1/topics
 
 ### 8. UPDATE TOPIC (PUT) berdasarkan ID Topik
-PUT http://localhost:5000/api/v1/topics/3
+PUT http://localhost:5000/api/v1/topics/4
 Content-Type: application/json
 
 {

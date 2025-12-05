@@ -94,25 +94,65 @@ const topicController = {
     }
   },
 
-  // --- 4. UPDATE TOPIC ---
+// --- 4. UPDATE TOPIC (Lengkap dengan Validasi Duplikat) ---
   updateTopic: async (req, res) => {
     try {
+      // 1. Ambil ID dari URL dan Data dari Body
       const { id } = req.params;
       const { nama_topics, keterangan, id_subjects, id_jenjang } = req.body;
+      const idToUpdate = parseInt(id); // Pastikan ID berupa integer
+
+      // 2. Validasi Input Dasar
+      if (!nama_topics || !id_subjects || !id_jenjang) {
+          return res.status(400).json({ error: "Nama topik, Mata Pelajaran, dan Jenjang wajib diisi" });
+      }
+
+      // 3. CEK DUPLIKAT (Logika Penting)
+      // Cari apakah ada topik LAIN yang punya Nama + Mapel + Jenjang sama.
+      // Kita gunakan 'NOT' untuk memastikan kita tidak mengecek data yang sedang diedit ini sendiri.
+      const duplicateCheck = await prisma.topics.findFirst({
+        where: {
+          nama_topics: { 
+            equals: nama_topics, 
+            mode: 'insensitive' // Tidak peduli huruf besar/kecil
+          },
+          id_subjects: parseInt(id_subjects),
+          id_jenjang: parseInt(id_jenjang),
+          NOT: {
+            id_topics: idToUpdate // <--- KUNCI: Kecualikan ID saya sendiri
+          }
+        }
+      });
+
+      // 4. Jika ditemukan duplikat, tolak request
+      if (duplicateCheck) {
+        return res.status(409).json({ error: "Gagal Update: Nama Topik ini sudah digunakan pada data lain." });
+      }
+
+      // 5. Lakukan Update jika aman
       const updatedTopic = await prisma.topics.update({
-        where: { id_topics: parseInt(id) },
+        where: { id_topics: idToUpdate },
         data: {
-          nama_topics,
-          keterangan,
+          nama_topics: nama_topics,
+          keterangan: keterangan || "", // Update keterangan (opsional)
           id_subjects: parseInt(id_subjects),
           id_jenjang: parseInt(id_jenjang)
         },
       });
 
-      res.status(200).json({ message: "Topik berhasil diupdate", data: updatedTopic });
+      // 6. Kirim respon sukses
+      res.status(200).json({ 
+        message: "Topik berhasil diupdate", 
+        data: updatedTopic 
+      });
 
     } catch (error) {
-      res.status(500).json({ error: "Gagal mengupdate topik" });
+      console.error("Error Update Topic:", error);
+      // Menangani error jika ID tidak ditemukan di database
+      if (error.code === 'P2025') {
+        return res.status(404).json({ error: "Topik tidak ditemukan atau sudah dihapus." });
+      }
+      res.status(500).json({ error: "Gagal mengupdate topik", details: error.message });
     }
   },
 
