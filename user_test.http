@@ -148,3 +148,54 @@ Content-Type: application/json
   "id_jenjang": 5,
   "keterangan": "Coba duplikat, harusnya gagal"
 }
+
+### 1. READ ALL JENJANG (GET)
+# Cek data awal (harus ada SD, SMP, SMA dari seeding Prisma Studio)
+GET http://localhost:5000/api/v1/admin/jenjang
+
+### 2. CREATE JENJANG BARU (POST)
+# Kita coba tambahkan jenjang baru "S2 Magister"
+POST http://localhost:5000/api/v1/admin/jenjang
+Content-Type: application/json
+
+{
+  "nama_jenjang": "S2 Magister",
+  "keterangan": "Program Pascasarjana"
+}
+
+### 3. TEST DUPLICATE JENJANG (POST)
+# Coba tambahkan "S2 Magister" LAGI. Harusnya GAGAL (409 Conflict).
+# Case insensitive test: "s2 magister" juga harus gagal.
+POST http://localhost:5000/api/v1/admin/jenjang
+Content-Type: application/json
+
+{
+  "nama_jenjang": "s2 magister",
+  "keterangan": "Coba duplikat huruf kecil"
+}
+
+### 4. UPDATE JENJANG (PUT)
+# Ganti ID X dengan ID "S2 Magister" yang baru dibuat (Misal ID 7)
+# Kita ubah jadi "S3 Doktor"
+PUT http://localhost:5000/api/v1/admin/jenjang/7
+Content-Type: application/json
+
+{
+  "nama_jenjang": "S3 Doktor",
+  "keterangan": "Program Doktoral"
+}
+
+### 5. TEST DUPLICATE UPDATE (PUT)
+# Coba ubah "S3 Doktor" menjadi "SD" (yang sudah ada).
+# Harusnya GAGAL (409 Conflict).
+PUT http://localhost:5000/api/v1/admin/jenjang/7
+Content-Type: application/json
+
+{
+  "nama_jenjang": "SD",
+  "keterangan": "Coba ubah jadi SD"
+}
+
+### 6. DELETE JENJANG (DELETE)
+# Hapus Jenjang "S3 Doktor" (ID 7)
+DELETE http://localhost:5000/api/v1/admin/jenjang/7
