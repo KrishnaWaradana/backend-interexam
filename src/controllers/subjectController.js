@@ -1,5 +1,3 @@
-// apps/backend/src/controllers/subjectController.js
-
 const prisma = require('../config/prismaClient'); 
 
 // --- 1. CRUD CREATE (Add Subject) ---
@@ -11,7 +9,7 @@ exports.addSubject = async (req, res) => {
             return res.status(400).json({ message: 'Nama Subject wajib diisi.' });
         }
         
-        // Memeriksa duplikasi menggunakan findFirst (Solusi tanpa mengubah schema)
+        // Memeriksa duplikasi menggunakan findFirst
         const existingSubject = await prisma.subjects.findFirst({
             where: { nama_subject: nama_subject } 
         });
@@ -39,15 +37,13 @@ exports.addSubject = async (req, res) => {
 exports.getAllSubjects = async (req, res) => {
     try {
         const subjects = await prisma.subjects.findMany({
-            select: { id_subject: true, nama_subject: true, keterangan: true }, // Sudah meminta 3 field
+            select: { id_subject: true, nama_subject: true, keterangan: true }, 
             orderBy: { nama_subject: 'asc' }
         });
 
-        // PERBAIKAN DI SINI: Memaksa field 'keterangan' ada di setiap objek JSON
         const subjectsWithKeterangan = subjects.map(s => ({
             id_subject: s.id_subject,
             nama_subject: s.nama_subject,
-            // Jika s.keterangan adalah NULL, ubah menjadi String Kosong ("")
             keterangan: s.keterangan || "" 
         }));
 
@@ -116,7 +112,6 @@ exports.deleteSubject = async (req, res) => {
 
     } catch (error) {
         console.error('Prisma Error saat DELETE Subject:', error);
-        // Tangani Foreign Key jika Subject terikat (ke User/Topics)
         if (error.code === 'P2003') {
             return res.status(409).json({ message: 'Gagal hapus: Subject masih terikat dengan Topik atau data User (Kompetensi).' });
         }

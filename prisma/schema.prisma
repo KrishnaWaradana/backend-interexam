@@ -161,6 +161,17 @@ model UserStatus {
   @@map("user_status")
 }
 
+model Jenjang {
+  id_jenjang   Int     @id @default(autoincrement())
+  nama_jenjang String? @db.VarChar(45) // SD, SMP, SMA, dll
+  keterangan   String? @db.VarChar(45)
+
+  // Relasi balik ke Topics
+  topics       Topics[]
+
+  @@map("jenjang")
+}
+
 model Topics {
   id_topics   Int     @id @default(autoincrement())
   nama_topics String? @db.VarChar(45)
@@ -171,6 +182,9 @@ model Topics {
   subTopics   SubTopics[]
   soal        Soal[]
   
+  id_jenjang  Int
+  jenjang     Jenjang @relation(fields: [id_jenjang], references: [id_jenjang])
+
   // Relasi ke Categories
   categoryTopics CategoryTopics[]
 

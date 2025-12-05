@@ -3,7 +3,7 @@ const router = express.Router();
 const userController = require('../controllers/userController'); 
 const multer = require('multer'); 
 const path = require('path');
-const fs = require('fs'); // <--- PENTING: Tambahkan ini
+const fs = require('fs'); 
 const subjectController = require('../controllers/subjectController');
 
 // Setup penyimpanan file
@@ -30,7 +30,7 @@ const upload = multer({ storage: storage });
 
 // Routes
 router.get('/admin/roles', userController.getAllowedRoles); 
-router.get('/admin/subjects', userController.getAllSubjects); 
+// router.get('/admin/subjects', userController.getAllSubjects); 
 router.get('/admin/users', userController.getAllUsers); 
 router.delete('/admin/user/:id', userController.deleteUser); 
 router.get('/admin/user/:id', userController.getUserById);

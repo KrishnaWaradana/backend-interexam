@@ -66,8 +66,8 @@ POST http://localhost:5000/api/v1/admin/subject
 Content-Type: application/json
 
 {
-  "nama_subject": "Fisika Kuantum",
-  "keterangan": "Mata pelajaran Fisika S2"
+  "nama_subject": "PKWU",
+  "keterangan": "Muatan Lokal"
 }
 
 
@@ -94,8 +94,8 @@ PUT http://localhost:5000/api/v1/admin/subject/2
 Content-Type: application/json
 
 {
-  "nama_subject": "Fisika Terapan",
-  "keterangan": "Mata pelajaran Fisika Terapan"
+  "nama_subject": "Biologi Terapan",
+  "keterangan": "Mata pelajaran Biologi Terapan"
 }
 
 
@@ -103,3 +103,36 @@ Content-Type: application/json
 ### 5. DELETE SUBJECT (DELETE)
 # PENTING: Ganti ID X dengan ID yang diupdate di TEST 4 (misalnya ID 3).
 DELETE http://localhost:5000/api/v1/admin/subject/1
+
+### ==========================================
+### BAGIAN TEST TOPIC
+### ==========================================
+
+### 6. CREATE TOPIC (POST)
+POST http://localhost:5000/api/v1/topics
+Content-Type: application/json
+
+{
+  "nama_topics": "Ide Usaha",
+  "id_subjects": 8, 
+  "id_jenjang": 5,
+  "keterangan": "Materi Ide Kreatif dan Usaha"
+}
+
+### 7. READ ALL TOPICS (GET)
+GET http://localhost:5000/api/v1/topics
+
+### 8. UPDATE TOPIC (PUT) berdasarkan ID Topik
+PUT http://localhost:5000/api/v1/topics/3
+Content-Type: application/json
+
+{
+  "nama_topics": "past-tenses",
+  "id_subjects": 7,
+  "id_jenjang": 5,
+  "keterangan": "Revisi materi Bahasa Inggris"
+}
+
+### 9. DELETE TOPIC (DELETE)
+# Hapus topik berdasarkan ID Topik
+DELETE http://localhost:5000/api/v1/topics/3
