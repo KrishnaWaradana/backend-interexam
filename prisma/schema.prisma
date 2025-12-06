@@ -119,6 +119,7 @@ model Users {
   
   // Field Foto
   foto       String?  @db.VarChar(255)
+  status     UserStatusEnum? @default(Unverified)
 
   soalCreated  Soal[]          @relation("UserSoal")
   validasiSoal ValidasiSoal[]
@@ -150,13 +151,13 @@ model UserStatus {
   id_user_status   Int             @id @default(autoincrement())
   id_user          Int
   status           UserStatusEnum?
-  id_admin         Int
+  id_admin         Int?
   
-  tanggal_modified String?         @db.VarChar(45) // Saran: Gunakan DateTime jika memungkinkan
+  created_at       DateTime?       @default(now()) @map("created_at") // Saran: Gunakan DateTime jika memungkinkan
   description      String?         @db.VarChar(45)
 
   user             Users           @relation("UserOwner", fields: [id_user], references: [id_user])
-  admin            Users           @relation("AdminModifier", fields: [id_admin], references: [id_user])
+  admin            Users?           @relation("AdminModifier", fields: [id_admin], references: [id_user])
 
   @@map("user_status")
 }
