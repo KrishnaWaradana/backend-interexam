@@ -2,7 +2,9 @@ const path = require('path');
 const express = require('express');
 const cors = require('cors'); 
 const app = express();
+const dotenv = require('dotenv');
 
+dotenv.config();
 const prisma = require('./config/prismaClient'); // ⬅️ IMPORT PRISMA DARI FILE CONFIG BARU
 
 const adminRoutes = require('./routes/adminRoutes'); 
