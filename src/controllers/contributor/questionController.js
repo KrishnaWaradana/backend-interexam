@@ -22,87 +22,117 @@ const getContributorIdFromDB = async (attachmentPath = null) => { /* ... */ };
 const addQuestion = async (req, res) => {
     const attachmentPath = req.file ? req.file.path : null; 
 
-    // Destructuring req.body
-    const { 
-        tipe_soal, text_soal, 
-        id_mata_pelajaran, id_topik, level_kesulitan, 
-        pembahasan_umum, opsi_jawaban, action_type 
-    } = req.body;
-
-    const statusSoal = action_type === 'Ajukan' ? StatusSoal.need_verification : StatusSoal.draft;
-    const subjectIdInt = parseInt(id_mata_pelajaran); 
-
-    // ⬇️ LOGIKA PENGAMBILAN ID CONTRIBUTOR DARI DATABASE (TANPA TOKEN) ⬇️
-    let contributorId;
-    
     try {
+        // 1. CEK DATA YANG DITERIMA DARI FRONTEND (DEBUGGING)
+        console.log("--- DEBUG ADD QUESTION ---");
+        console.log("BODY:", req.body);
+        console.log("FILE:", req.file);
+
+        // Destructuring req.body
+        const { 
+            tipe_soal, text_soal, 
+            id_mata_pelajaran, id_topik, // Pastikan id_topik ada
+            level_kesulitan, 
+            pembahasan_umum, opsi_jawaban, action_type 
+        } = req.body;
+
+        // 2. VALIDASI WAJIB: ID TOPIK TIDAK BOLEH KOSONG
+        if (!id_topik || id_topik === "undefined" || id_topik === "null") {
+             throw new Error("ID Topik wajib dipilih dan tidak boleh kosong!");
+        }
+
+        const statusSoal = action_type === 'Ajukan' ? StatusSoal.need_verification : StatusSoal.draft;
+        
+        // ✅ PERBAIKAN UTAMA: Parsing ID Topik
+        const topicIdInt = parseInt(id_topik); 
+        const subjectIdInt = parseInt(id_mata_pelajaran);
+
+        // Cek apakah parsing berhasil (menghindari NaN)
+        if (isNaN(topicIdInt)) {
+            throw new Error(`ID Topik tidak valid: ${id_topik}`);
+        }
+
+        // --- LOGIKA CONTRIBUTOR ID (BISA PAKE HARDCODE DULU UTK TESTING) ---
+        // Jika malas cek DB, ganti baris bawah ini dengan: const contributorId = 1; (Pastikan ID 1 ada di tabel users)
+        let contributorId;
         const contributorUser = await prisma.users.findFirst({
             where: { role: { in: ['Contributor', 'Admin'] } },
             select: { id_user: true }
         });
 
         if (!contributorUser) {
-            if (attachmentPath) deleteFile(attachmentPath);
-            return res.status(500).json({ message: 'Gagal: Tidak ditemukan user Contributor/Admin di database.' });
+             throw new Error('Tidak ditemukan user Contributor/Admin di database.');
         }
         contributorId = contributorUser.id_user; 
-        console.log(`[DEBUG DB FETCH ADD] Menggunakan Contributor ID: ${contributorId}`);
+        console.log(`[DEBUG] Contributor ID: ${contributorId}, Topic ID: ${topicIdInt}`);
+        // ------------------------------------------------------------------
 
-    } catch (e) {
-        if (attachmentPath) deleteFile(attachmentPath);
-        return res.status(500).json({ message: 'Error saat mencari ID user di database.' });
-    }
-    // ⬆️ END LOGIKA CONTRIBUTOR ⬆️
+        // --- Mapping Tipe Soal ---
+        let jenisSoalPrisma = tipe_soal === 'pilihan_ganda' ? 'multiple_choice' : 'multiple_answer';
+        if (tipe_soal !== 'pilihan_ganda' && tipe_soal !== 'multi_jawaban') {
+             // Fallback jika string dari frontend beda
+             jenisSoalPrisma = tipe_soal; 
+        }
 
-    // --- Mapping Tipe Soal ---
-    let jenisSoalPrisma;
-    if (tipe_soal === 'pilihan_ganda') {
-        jenisSoalPrisma = 'multiple_choice';
-    } else if (tipe_soal === 'multi_jawaban') {
-        jenisSoalPrisma = 'multiple_answer';
-    } else {
-        jenisSoalPrisma = tipe_soal; 
-    }
-
-    // --- Validasi Dasar ---
-    if (!text_soal || !id_mata_pelajaran || !opsi_jawaban || !tipe_soal) {
-        if (attachmentPath) deleteFile(attachmentPath);
-        return res.status(400).json({ message: 'Field wajib harus diisi.' });
-    }
-    
-    // ⬇️ KONSTRUKSI DATA SOAL ⬇️
-    const dataSoal = {
-        tanggal_pembuatan: new Date().toISOString(),
-        text_soal: text_soal,
-        jenis_soal: jenisSoalPrisma, 
-        level_kesulitan: level_kesulitan,
-        status: statusSoal,
-        contributor: { connect: { id_user: contributorId } },
-        topic: { connect: { id_topics: subjectIdInt } },
-    };
-    
-    try {
+        // ⬇️ KONSTRUKSI DATA SOAL ⬇️
+        const dataSoal = {
+            tanggal_pembuatan: new Date().toISOString(),
+            text_soal: text_soal,
+            jenis_soal: jenisSoalPrisma, 
+            level_kesulitan: level_kesulitan,
+            status: statusSoal,
+            
+            // Connect ke User
+            contributor: { connect: { id_user: contributorId } },
+            
+            // ✅ PERBAIKAN UTAMA: Connect ke Topics menggunakan ID Topik (BUKAN Mapel)
+            topic: { connect: { id_topics: topicIdInt } }, 
+        };
+        
+        // Eksekusi Create
         const newSoal = await prisma.soal.create({ data: dataSoal });
         
-        // ... (Simpan Attachment, Buat Opsi Jawaban) ...
-        
-        // ⬇️ FILTERING VALIDATOR TUJUAN ⬇️
-        let validatorList = [];
-        if (action_type === 'Ajukan') {
-            // ... (Logic filtering validator Anda) ...
+        // --- SIMPAN GAMBAR SOAL ---
+        if (attachmentPath) {
+             await prisma.attachmentsSoal.create({
+                data: {
+                    path_attachment: attachmentPath,
+                    keterangan: 'Gambar Soal Utama',
+                    id_soal: newSoal.id_soal
+                }
+             });
         }
-        // ⬆️ END FILTERING VALIDATOR ⬆️
 
-        const message = action_type === 'Ajukan'
-            ? 'Soal berhasil diajukan untuk diverifikasi.'
-            : 'Soal berhasil disimpan sebagai draft.';
+        // --- SIMPAN OPSI JAWABAN ---
+        let parsedOpsi = [];
+        try {
+            parsedOpsi = JSON.parse(opsi_jawaban);
+        } catch (e) {
+            console.error("Gagal parse opsi jawaban:", e);
+        }
 
-        res.status(201).json({ message: message, data: { soal: newSoal, validators: validatorList } });
+        const jawabanData = parsedOpsi.map(opsi => ({
+            opsi_jawaban_text: opsi.text, 
+            status: opsi.is_correct, 
+            pembahasan: pembahasan_umum, 
+            soal_id_soal: newSoal.id_soal
+        }));
+        
+        if (jawabanData.length > 0) {
+            await prisma.jawabanSoal.createMany({ data: jawabanData });
+        }
+
+        const message = action_type === 'Ajukan' ? 'Soal diajukan.' : 'Soal disimpan draft.';
+        res.status(201).json({ message: message, data: { soal: newSoal } });
 
     } catch (error) {
+        // Hapus file jika error agar server tidak penuh sampah
         if (attachmentPath) deleteFile(attachmentPath);
-        console.error('Error saat menambah soal:', error);
-        res.status(500).json({ message: 'Gagal menambahkan soal.' });
+        
+        console.error('❌ Error addQuestion:', error.message);
+        
+        // Kirim pesan error yang jelas ke Frontend
+        res.status(500).json({ message: error.message });
     }
 };
 
