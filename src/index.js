@@ -12,6 +12,9 @@ const topicRoutes = require('./routes/topicRoutes');
 const authRoutes = require('./routes/authRoutes');
 const jenjangRoutes = require('./routes/jenjangRoutes');
 
+const adminBankSoalRoutes = require('./routes/adminBankSoalRoutes');
+const validatorBankSoalRoutes = require('./routes/validator/bankSoalRoutes');
+
 // MIDDLEWARE WAJIB
 app.use(express.json()); 
 app.use(cors({ 
@@ -24,6 +27,8 @@ app.use('/api/v1', adminRoutes);
 app.use('/api/v1/topics', topicRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/v1/admin/jenjang', jenjangRoutes); 
+app.use('/api/v1/admin/bank-soal', adminBankSoalRoutes);
+app.use('/api/v1/validator/bank-soal', validatorBankSoalRoutes);
 
 const PORT = 5000;
 app.listen(PORT, () => {
