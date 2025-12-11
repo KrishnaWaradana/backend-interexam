@@ -1,12 +1,17 @@
+// apps/backend/src/routes/adminRoutes.js
+
 const express = require('express');
 const router = express.Router();
 const userController = require('../controllers/userController'); 
+const subjectController = require('../controllers/subjectController');
 const multer = require('multer'); 
 const path = require('path');
 const fs = require('fs'); 
-const subjectController = require('../controllers/subjectController');
 
-// Setup penyimpanan file
+// 1. IMPORT MIDDLEWARE KEAMANAN (Wajib ada!)
+const { authenticateToken, requireRole } = require('../middlewares/authMiddleware');
+
+// Setup penyimpanan file (Multer)
 const storage = multer.diskStorage({
     destination: (req, file, cb) => {
         // Arahkan ke folder uploads/photos di luar src
@@ -28,27 +33,39 @@ const storage = multer.diskStorage({
 
 const upload = multer({ storage: storage });
 
-// Routes
+// =================================================================
+// ROUTE MANAGEMENT USERS
+// =================================================================
+
 router.get('/admin/roles', userController.getAllowedRoles); 
-// router.get('/admin/subjects', userController.getAllSubjects); 
 router.get('/admin/users', userController.getAllUsers); 
-router.delete('/admin/user/:id', userController.deleteUser); 
 router.get('/admin/user/:id', userController.getUserById);
+
 // Create User (Upload Foto)
 router.post('/admin/user', upload.single('profile_picture'), userController.addUser);
 
-// Update User (Upload Foto)
+// Update User Profile (Edit Nama/Foto/Pass) - Upload Foto
 router.put('/admin/user/:id', upload.single('profile_picture'), userController.updateUser);
 
+// Delete User
+router.delete('/admin/user/:id', userController.deleteUser); 
+
+// --- [BARU] UPDATE STATUS USER (APPROVE / SUSPEND) ---
+// Ini endpoint yang dipakai Admin untuk mengaktifkan user Validator/Contributor
+router.put(
+    '/admin/user/:id/status', 
+    authenticateToken,       // Wajib Login
+    requireRole(['Admin']),  // Wajib Admin
+    userController.changeUserStatus // Fungsi yang tadi kita tambahkan di controller
+);
+
+// =================================================================
+// ROUTE MANAGEMENT SUBJECTS
+// =================================================================
+
 router.post('/admin/subject', subjectController.addSubject); 
-
-// 6. READ All Subjects
 router.get('/admin/subjects', subjectController.getAllSubjects); 
-
-// 7. UPDATE Subject
 router.put('/admin/subject/:id', subjectController.updateSubject); 
-
-// 8. DELETE Subject
 router.delete('/admin/subject/:id', subjectController.deleteSubject);
 
 module.exports = router;
