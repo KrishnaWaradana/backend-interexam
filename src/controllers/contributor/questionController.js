@@ -153,7 +153,7 @@ const getQuestionsByContributor = async (req, res) => {
     }
 
     try {
-        // ... (Bagian statistik tetap sama) ...
+        // ... (Bagian statistik tetap sama, tidak perlu diubah) ...
         const totalSoal = await prisma.soal.count({ where: { id_contributor: contributorId } });
         const totalVerified = await prisma.soal.count({ where: { id_contributor: contributorId, status: StatusSoal.disetujui } });
         const totalDraft = await prisma.soal.count({ where: { id_contributor: contributorId, status: StatusSoal.draft } });
@@ -169,52 +169,50 @@ const getQuestionsByContributor = async (req, res) => {
             total_belum_diajukan: totalDraft + totalNeedVerification 
         };
 
-        // --- FETCH DATA ---
+        // --- 1. FETCH DATA (KUNCI UTAMA) ---
         const questions = await prisma.soal.findMany({
             where: { id_contributor: contributorId },
             include: {
                 topic: { select: { nama_topics: true } },
                 attachments: true,
-                jawaban: true // <--- TAMBAHAN PENTING: Ambil jawaban agar bisa diduplikasi
+                jawaban: true // <--- WAJIB: Ambil jawaban agar bisa diduplikasi
             },
             orderBy: { tanggal_pembuatan: 'desc' }
         });
 
-        // --- FORMAT DATA UNTUK FRONTEND ---
+        // --- 2. FORMAT DATA AGAR LENGKAP ---
         const formattedQuestions = questions.map(q => {
-            // Ambil pembahasan dari salah satu jawaban (asumsi pembahasan sama per soal)
+            // Ambil pembahasan dari salah satu jawaban (karena struktur DB Anda menyimpan pembahasan di tabel jawaban)
             const pembahasan = q.jawaban.length > 0 ? q.jawaban[0].pembahasan : "";
 
             return {
+                // Data Tampilan Tabel
                 id: q.id_soal,
                 nomor: q.id_soal, 
                 mata_pelajaran: q.topic ? q.topic.nama_topics : 'N/A', 
-                
-                // DATA UTAMA (YANG SEBELUMNYA HILANG)
-                text_soal: q.text_soal, 
-                id_topik: q.id_topics, // Penting untuk duplikat
-                pembahasan_umum: pembahasan, // Penting untuk duplikat
-                
                 tipe_soal: q.jenis_soal,
                 level_kesulitan: q.level_kesulitan,
                 status: q.status,
-                id_contributor: q.id_contributor,
-                gambar: q.attachments.length > 0 ? q.attachments[0].path_attachment : null,
                 
-                // Simpan list jawaban agar frontend bisa menyalinnya
+                // Data Tersembunyi (PENTING UNTUK DUPLIKAT & TAMPILAN TEXT)
+                text_soal: q.text_soal,  // Agar tidak muncul "-"
+                id_topik: q.id_topics,   // Agar duplikat tahu topiknya apa
+                pembahasan_umum: pembahasan, // Agar duplikat menyalin pembahasan
+                
+                // Simpan list jawaban mentah agar Frontend bisa mengolahnya kembali
                 list_jawaban: q.jawaban 
             };
         });
 
         res.status(200).json({ 
-            message: 'Data dashboard contributor berhasil diambil.', 
+            message: 'Data dashboard berhasil diambil.', 
             data: formattedQuestions, 
             statistics: statistics
         });
 
     } catch (error) {
         console.error('Error saat mengambil soal contributor:', error); 
-        res.status(500).json({ message: 'Gagal mengambil data soal dari database.' });
+        res.status(500).json({ message: 'Gagal mengambil data soal.' });
     }
 };
 
