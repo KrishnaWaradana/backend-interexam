@@ -12,7 +12,7 @@ const subjectController = require('../controllers/subjectController');
 const paketSoalController = require('../controllers/paketSoalController'); // Pastikan file ini sudah dibuat
 
 // --- IMPORT MIDDLEWARE KEAMANAN ---
-const { authenticateToken, requireRole } = require('../middlewares/authMiddleware');
+const { authenticateToken, requireRole } = require('../middleware/authMiddleware');
 
 
 // =================================================================
