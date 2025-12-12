@@ -223,37 +223,54 @@ const editQuestion = async (req, res) => {
     const questionId = parseInt(req.params.id);
     if (!questionId) return res.status(400).json({ message: 'ID Soal wajib disertakan.' });
 
-    // Akses File
+    // Akses File Baru (Jika ada upload baru)
     const files = req.files || {};
     const newSoalFile = files['image_soal'] ? files['image_soal'][0] : null;
-    const dbNewSoalPath = newSoalFile ? `uploads/questions/${newSoalFile.filename}` : null;
     const newAnswerFilesList = files['image_jawaban'] || [];
 
     try {
+        // 1. Ambil Data Lama
         const existingSoal = await prisma.soal.findUnique({
             where: { id_soal: questionId },
-            include: { 
-                attachments: true, 
-                jawaban: true // <--- PERBAIKAN: Gunakan 'jawaban' sesuai schema
-            }
+            include: { attachments: true, jawaban: true }
         });
 
         if (!existingSoal) throw new Error('Soal tidak ditemukan.');
 
-        // A. UPDATE GAMBAR SOAL UTAMA
-        if (dbNewSoalPath) {
-            if (existingSoal.attachments && existingSoal.attachments.length > 0) {
+        // 2. Tentukan Path Gambar Soal Utama
+        let finalSoalPath = null;
+
+        // Cek apakah user upload gambar soal baru?
+        if (newSoalFile) {
+            // Ada gambar baru -> Pakai yang baru
+            finalSoalPath = `uploads/questions/${newSoalFile.filename}`;
+            
+            // Hapus gambar lama fisik jika ada
+            if (existingSoal.attachments.length > 0) {
                 deleteFile(existingSoal.attachments[0].path_attachment);
                 await prisma.attachmentsSoal.deleteMany({ where: { id_soal: questionId } });
             }
-            await prisma.attachmentsSoal.create({
-                data: { path_attachment: dbNewSoalPath, keterangan: 'Gambar Soal Utama', id_soal: questionId }
-            });
+        } else {
+            // Tidak ada gambar baru -> Cek apakah user ingin menghapus gambar lama?
+            // (Disini kita asumsikan jika tidak upload baru, kita pertahankan yang lama)
+            if (existingSoal.attachments.length > 0) {
+                finalSoalPath = existingSoal.attachments[0].path_attachment;
+            }
         }
 
-        // B. UPDATE DATA SOAL
+        // A. UPDATE GAMBAR SOAL DI DB
+        // Jika ada path baru (atau lama yang dipertahankan), pastikan tercatat
+        if (finalSoalPath && newSoalFile) {
+             await prisma.attachmentsSoal.create({
+                data: { path_attachment: finalSoalPath, keterangan: 'Gambar Soal Utama', id_soal: questionId }
+            });
+        }
+        // Note: Jika hanya mempertahankan gambar lama, tidak perlu delete/create attachment, biarkan saja.
+
+
+        // B. UPDATE DATA TEXT SOAL
         const { tipe_soal, text_soal, id_topik, level_kesulitan, pembahasan_umum, opsi_jawaban, action_type } = req.body;
-        const statusSoal = action_type === 'Ajukan' ? StatusSoal.need_verification : StatusSoal.Draft;
+        const statusSoal = action_type === 'Ajukan' ? StatusSoal.need_verification : StatusSoal.draft;
         
         await prisma.soal.update({
             where: { id_soal: questionId },
@@ -264,35 +281,39 @@ const editQuestion = async (req, res) => {
             }
         });
 
-        // C. UPDATE JAWABAN (Hapus Semua -> Buat Baru)
-        // Gunakan 'existingSoal.jawaban' bukan 'existingSoal.jawabanSoal'
-        if (existingSoal.jawaban) {
-            existingSoal.jawaban.forEach(jawabanLama => {
-                // Periksa path_gambar_jawaban (sesuai update schema terakhir)
-                if (jawabanLama.path_gambar_jawaban) {
-                    deleteFile(jawabanLama.path_gambar_jawaban);
-                }
-            });
-        }
+        // C. UPDATE JAWABAN (LOGIKA CERDAS: PERTAHANKAN GAMBAR LAMA)
         
-        // Hapus record di tabel JawabanSoal
+        // 1. Hapus data jawaban di DB (Row-nya dihapus, tapi file gambarnya JANGAN dulu dihapus sembarangan)
+        // Kita hanya menghapus file fisik JIKA jawaban tersebut benar-benar diganti gambarnya.
         await prisma.jawabanSoal.deleteMany({ where: { soal_id_soal: questionId } });
 
         const parsedOpsi = JSON.parse(opsi_jawaban);
         let answerFileIndex = 0;
+
         const jawabanDataBaru = parsedOpsi.map((opsi) => {
-            let currentAnswerImagePath = null;
+            let finalAnswerPath = null;
+
+            // KASUS 1: User upload gambar baru untuk opsi ini
             if (opsi.has_image === true && newAnswerFilesList[answerFileIndex]) {
-                 const file = newAnswerFilesList[answerFileIndex];
-                 currentAnswerImagePath = `uploads/questions/${file.filename}`;
-                 answerFileIndex++;
+                const file = newAnswerFilesList[answerFileIndex];
+                finalAnswerPath = `uploads/questions/${file.filename}`;
+                answerFileIndex++;
+                
+                // (Opsional) Di sini Anda bisa mencari gambar lama opsi ini dan menghapusnya dari folder
+                // Tapi karena struktur deleteMany di atas, agak kompleks melacaknya. 
+                // Untuk keamanan data, biarkan file lama jadi sampah (orphan) dulu, atau buat script cleanup terpisah.
+            } 
+            // KASUS 2: Tidak upload baru, tapi ada path lama (dikirim dari frontend)
+            else if (opsi.old_path && opsi.old_path !== "null" && opsi.old_path !== "") {
+                finalAnswerPath = opsi.old_path;
             }
+
             return {
                 opsi_jawaban_text: opsi.text || "",
                 status: opsi.is_correct,
                 pembahasan: pembahasan_umum,
                 soal_id_soal: questionId,
-                path_gambar_jawaban: currentAnswerImagePath
+                path_gambar_jawaban: finalAnswerPath // Simpan path (baru atau lama)
             };
         });
 
@@ -301,6 +322,7 @@ const editQuestion = async (req, res) => {
         res.status(200).json({ message: 'Soal berhasil diperbarui.' });
 
     } catch (error) {
+        // Cleanup file baru jika error
         if (newSoalFile) deleteFile(newSoalFile.path);
         if (newAnswerFilesList.length > 0) newAnswerFilesList.forEach(f => deleteFile(f.path));
         console.error('Error editQuestion:', error.message);
