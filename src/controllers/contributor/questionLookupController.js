@@ -1,9 +1,7 @@
-// apps/backend/src/controllers/contributor/questionLookupController.js
-
 const prisma = require(global.__basedir + '/config/prismaClient'); 
-const { LevelKesulitan } = require('@prisma/client'); // Mengambil ENUM Level Kesulitan
+const { LevelKesulitan } = require('@prisma/client'); 
 
-// 1. MATA PELAJARAN (Dari Subjects)
+// 1. MATA PELAJARAN 
 exports.getSubjectsLookup = async (req, res) => {
     try {
         const subjects = await prisma.subjects.findMany({
@@ -16,7 +14,7 @@ exports.getSubjectsLookup = async (req, res) => {
     }
 };
 
-// 2. TOPIK (Dari Topics, difilter berdasarkan Subject ID)
+// 2. TOPIK 
 exports.getTopicsLookup = async (req, res) => {
     const { subjectId } = req.params; 
     
