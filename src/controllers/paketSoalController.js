@@ -3,15 +3,13 @@ const prisma = new PrismaClient();
 const fs = require('fs');
 
 // --- 1. GET DATA UNTUK MODAL BANK SOAL ---
-// Endpoint ini dipanggil saat Admin buka modal "Add Soal"
-// Menampilkan hanya soal yang statusnya "Disetujui"
 exports.getBankSoal = async (req, res) => {
     try {
-        const { subject_id, level, jenis_soal } = req.query; // Filter opsional
+        const { subject_id, level, jenis_soal } = req.query;
 
         // Build Filter
         const whereClause = {
-            status: 'disetujui' // WAJIB: Hanya soal yg sudah diapprove
+            status: 'disetujui' 
         };
 
         if (level) whereClause.level_kesulitan = level;
