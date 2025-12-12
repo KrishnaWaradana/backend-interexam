@@ -1,18 +1,11 @@
 const prisma = require('../../config/prismaClient'); 
 
-// 1. GET Dashboard Validator (Filtered by Kompetensi)
+// 1. GET Dashboard Validator
 const getValidatorSoal = async (req, res) => {
-  // ID User Validator
-  // Ganti angka 2 dengan ID User Validator asli di database Anda (cek Prisma Studio)
-  const idValidator = 2; 
-
-  // (Nyalakan nanti saat Auth sudah jalan):
-  // const idValidator = req.user ? req.user.id_user : null;
-  // if (!idValidator) return res.status(401).json({ message: "Unauthorized" });
+  const idValidator = 2; // Testing ID (Natris)
 
   try {
-    // A. Cari Mapel Validator
-    const kompetensi = await prisma.kompetensi_user.findMany({
+    const kompetensi = await prisma.kompetensiUser.findMany({
       where: { id_user: idValidator },
       select: { id_subject: true }
     });
@@ -20,26 +13,23 @@ const getValidatorSoal = async (req, res) => {
     const subjectIds = kompetensi.map(k => k.id_subject);
 
     if (subjectIds.length === 0) {
-      return res.status(200).json({ status: 'success', data: [], message: 'Belum ada kompetensi mapel.' });
+      return res.status(200).json({ status: 'success', data: [], message: 'Belum ada kompetensi.' });
     }
 
-    // B. Cari Soal sesuai Mapel
     const soalList = await prisma.soal.findMany({
       where: {
-        topics: { id_subjects: { in: subjectIds } }
-        // Opsional: status: 'need verification' 
+        topic: { id_subjects: { in: subjectIds } } 
       },
       orderBy: { id_soal: 'desc' },
       include: {
         contributor: { select: { nama_user: true } },
-        topics: { include: { subjects: { select: { nama_subject: true } } } }
+        topic: { include: { subject: { select: { nama_subject: true } } } } 
       }
     });
 
-    // Format Data
     const formattedData = soalList.map((item) => ({
       id_soal: item.id_soal,
-      mata_pelajaran: item.topics?.subjects?.nama_subject || '-',
+      mata_pelajaran: item.topic?.subject?.nama_subject || '-',
       tipe_soal: item.jenis_soal,
       level_kesulitan: item.level_kesulitan,
       status: item.status,
@@ -49,12 +39,12 @@ const getValidatorSoal = async (req, res) => {
 
     res.status(200).json({ status: 'success', data: formattedData });
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: 'Error fetching validator data' });
+    console.error("Error getValidatorSoal:", error);
+    res.status(500).json({ message: error.message });
   }
 };
 
-// 2. GET Detail Soal
+// 2. GET Detail Soal 
 const getSoalDetail = async (req, res) => {
     const { id } = req.params;
     try {
@@ -62,13 +52,20 @@ const getSoalDetail = async (req, res) => {
             where: { id_soal: parseInt(id) },
             include: {
                 contributor: { select: { nama_user: true } },
-                topics: { include: { subjects: true, sub_topics: true } },
-                jawaban_soal: true
+                topic: { 
+                  include: { 
+                    subject: true,
+                    subTopics: true 
+                  } 
+                },
+                jawaban: true 
             }
         });
+        
         if (!soal) return res.status(404).json({ message: 'Soal tidak ditemukan' });
         res.status(200).json({ status: 'success', data: soal });
     } catch (error) {
+        console.error("Error getSoalDetail:", error);
         res.status(500).json({ message: error.message });
     }
 };
@@ -77,8 +74,7 @@ const getSoalDetail = async (req, res) => {
 const validateSoal = async (req, res) => {
   const { id } = req.params;
   const { status, keterangan } = req.body; 
-  
-  const idValidator = 2; // Ganti dengan ID User Validator yang sama
+  const idValidator = 2; 
 
   if (!['disetujui', 'ditolak'].includes(status)) {
     return res.status(400).json({ message: 'Status tidak valid' });
@@ -91,7 +87,7 @@ const validateSoal = async (req, res) => {
         data: { status: status }
       });
 
-      await tx.validasi_soal.create({
+      await tx.validasiSoal.create({
         data: {
           id_soal: parseInt(id),
           id_validator: idValidator,
@@ -105,7 +101,8 @@ const validateSoal = async (req, res) => {
 
     res.status(200).json({ status: 'success', message: `Soal ${status}`, data: result });
   } catch (error) {
-    res.status(500).json({ message: 'Gagal memvalidasi' });
+    console.error("Error validateSoal:", error);
+    res.status(500).json({ message: error.message });
   }
 };
 

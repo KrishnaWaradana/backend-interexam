@@ -418,3 +418,61 @@ GET http://localhost:5000/api/v1/contributor/my-questions
 # Menguji: Menghapus soal dan semua relasinya (jawaban, attachment).
 
 DELETE http://localhost:5000/api/v1/contributor/question/{{questionIdToDelete}}
+
+### ==============================================
+### KONFIGURASI TESTING
+### ==============================================
+@baseUrl = http://localhost:5000/api/v1
+# GANTI ANGKA DI BAWAH INI DENGAN ID SOAL YANG BARU DIBUAT DI PRISMA STUDIO
+@idSoal = 1
+
+
+### ==============================================
+### 1. TEST DASHBOARD VALIDATOR
+### ==============================================
+# Ekspektasi: Muncul soal "Bakteri" tadi.
+# Jika kosong [], cek apakah hardcode ID di controller sudah sama dengan User Validator di database?
+GET {{baseUrl}}/validator/bank-soal
+Content-Type: application/json
+
+
+### ==============================================
+### 2. TEST LIHAT DETAIL SOAL
+### ==============================================
+# Ekspektasi: Muncul detail lengkap (Text soal, Subtopik 'Bakteri', dll)
+GET {{baseUrl}}/validator/bank-soal/{{idSoal}}
+Content-Type: application/json
+
+
+### ==============================================
+### 3. TEST VALIDASI: SETUJUI (APPROVE)
+### ==============================================
+# Ekspektasi: Status berubah jadi 'disetujui'
+PUT {{baseUrl}}/validator/bank-soal/2/validate
+Content-Type: application/json
+
+{
+    "status": "disetujui"
+}
+
+
+### ==============================================
+### 4. TEST VALIDASI: TOLAK (REJECT)
+### ==============================================
+# Gunakan ini jika ingin mengetes alur penolakan (Revisi)
+# Ekspektasi: Status berubah jadi 'ditolak' & ada history keterangan
+PUT {{baseUrl}}/validator/bank-soal/{{idSoal}}/validate
+Content-Type: application/json
+
+{
+    "status": "ditolak",
+    "keterangan": "Soal terlalu mudah, tolong tambahkan opsi pengecoh."
+}
+
+
+### ==============================================
+### 5. TEST ADMIN (GOD MODE)
+### ==============================================
+# Admin bisa melihat semua soal tanpa peduli mapel
+GET {{baseUrl}}/admin/bank-soal
+Content-Type: application/json
