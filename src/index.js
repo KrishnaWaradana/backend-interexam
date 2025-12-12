@@ -15,10 +15,11 @@ const adminRoutes = require('./routes/adminRoutes');
 const topicRoutes = require('./routes/topicRoutes');
 const authRoutes = require('./routes/authRoutes');
 const jenjangRoutes = require('./routes/jenjangRoutes');
+const adminBankSoalRoutes = require('./routes/adminBankSoalRoutes');
 
 // 💡 Ini adalah file routes yang Anda buat (src/routes/contributor/soalRoutes.js)
 const soalRoutes = require('./routes/contributor/soalRoutes'); 
-
+const validatorBankSoalRoutes = require('./routes/validator/BankSoalRoutes');
 
 // MIDDLEWARE WAJIB
 app.use(express.json()); // Parsing JSON body
@@ -43,6 +44,14 @@ app.use('/api/auth', authRoutes);
 
 // Jenjang Routes (Contoh: /api/v1/admin/jenjang/list)
 app.use('/api/v1/admin/jenjang', jenjangRoutes); 
+
+// Admin Bank Soal (Melihat Semua Soal)
+// Endpoint: http://localhost:5000/api/v1/admin/bank-soal
+app.use('/api/v1/admin/bank-soal', adminBankSoalRoutes);
+
+// Validator Bank Soal (Validasi Sesuai Kompetensi)
+// Endpoint: http://localhost:5000/api/v1/validator/bank-soal
+app.use('/api/v1/validator/bank-soal', validatorBankSoalRoutes);
 
 
 // 🚀 KOREKSI UTAMA: ROUTE CONTRIBUTOR/SOAL

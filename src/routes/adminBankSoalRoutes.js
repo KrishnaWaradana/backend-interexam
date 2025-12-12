@@ -1,10 +1,9 @@
 const express = require('express');
 const router = express.Router();
+const controller = require('../controllers/adminBankSoalController');
 
-// Import Controller (Perhatikan path ".." karena sejajar folder)
-const controller = require('../controllers/adminBankSoalController'); 
+// Auth 
 // const authMiddleware = require('../middleware/authMiddleware');
-
 // router.use(authMiddleware.verifyToken, authMiddleware.isAdmin); 
 
 router.get('/', controller.getAllSoal);

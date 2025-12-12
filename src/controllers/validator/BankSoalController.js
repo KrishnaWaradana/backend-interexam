@@ -2,14 +2,16 @@ const prisma = require('../../config/prismaClient');
 
 // 1. GET Dashboard Validator (Filtered by Kompetensi)
 const getValidatorSoal = async (req, res) => {
-  const idValidator = req.user ? req.user.id_user : null; 
+  // ID User Validator
+  // Ganti angka 2 dengan ID User Validator asli di database Anda (cek Prisma Studio)
+  const idValidator = 2; 
 
-  if (!idValidator) {
-    return res.status(401).json({ message: "Unauthorized: User ID not found" });
-  }
+  // (Nyalakan nanti saat Auth sudah jalan):
+  // const idValidator = req.user ? req.user.id_user : null;
+  // if (!idValidator) return res.status(401).json({ message: "Unauthorized" });
 
   try {
-    // Cari Mapel Validator
+    // A. Cari Mapel Validator
     const kompetensi = await prisma.kompetensi_user.findMany({
       where: { id_user: idValidator },
       select: { id_subject: true }
@@ -18,13 +20,14 @@ const getValidatorSoal = async (req, res) => {
     const subjectIds = kompetensi.map(k => k.id_subject);
 
     if (subjectIds.length === 0) {
-      return res.status(200).json({ status: 'success', data: [], message: 'Belum ada kompetensi.' });
+      return res.status(200).json({ status: 'success', data: [], message: 'Belum ada kompetensi mapel.' });
     }
 
-    // Cari Soal sesuai Mapel
+    // B. Cari Soal sesuai Mapel
     const soalList = await prisma.soal.findMany({
       where: {
         topics: { id_subjects: { in: subjectIds } }
+        // Opsional: status: 'need verification' 
       },
       orderBy: { id_soal: 'desc' },
       include: {
@@ -74,7 +77,8 @@ const getSoalDetail = async (req, res) => {
 const validateSoal = async (req, res) => {
   const { id } = req.params;
   const { status, keterangan } = req.body; 
-  const idValidator = req.user.id_user; 
+  
+  const idValidator = 2; // Ganti dengan ID User Validator yang sama
 
   if (!['disetujui', 'ditolak'].includes(status)) {
     return res.status(400).json({ message: 'Status tidak valid' });

@@ -153,6 +153,7 @@ const getQuestionsByContributor = async (req, res) => {
     }
 
     try {
+        // ... (Bagian statistik tetap sama) ...
         const totalSoal = await prisma.soal.count({ where: { id_contributor: contributorId } });
         const totalVerified = await prisma.soal.count({ where: { id_contributor: contributorId, status: StatusSoal.disetujui } });
         const totalDraft = await prisma.soal.count({ where: { id_contributor: contributorId, status: StatusSoal.draft } });
@@ -168,25 +169,42 @@ const getQuestionsByContributor = async (req, res) => {
             total_belum_diajukan: totalDraft + totalNeedVerification 
         };
 
+        // --- FETCH DATA ---
         const questions = await prisma.soal.findMany({
             where: { id_contributor: contributorId },
             include: {
                 topic: { select: { nama_topics: true } },
-                attachments: true 
+                attachments: true,
+                jawaban: true // <--- TAMBAHAN PENTING: Ambil jawaban agar bisa diduplikasi
             },
             orderBy: { tanggal_pembuatan: 'desc' }
         });
 
-        const formattedQuestions = questions.map(q => ({
-            id: q.id_soal,
-            nomor: q.id_soal, 
-            mata_pelajaran: q.topic ? q.topic.nama_topics : 'N/A', 
-            tipe_soal: q.jenis_soal,
-            level_kesulitan: q.level_kesulitan,
-            status: q.status,
-            id_contributor: q.id_contributor,
-            gambar: q.attachments.length > 0 ? q.attachments[0].path_attachment : null
-        }));
+        // --- FORMAT DATA UNTUK FRONTEND ---
+        const formattedQuestions = questions.map(q => {
+            // Ambil pembahasan dari salah satu jawaban (asumsi pembahasan sama per soal)
+            const pembahasan = q.jawaban.length > 0 ? q.jawaban[0].pembahasan : "";
+
+            return {
+                id: q.id_soal,
+                nomor: q.id_soal, 
+                mata_pelajaran: q.topic ? q.topic.nama_topics : 'N/A', 
+                
+                // DATA UTAMA (YANG SEBELUMNYA HILANG)
+                text_soal: q.text_soal, 
+                id_topik: q.id_topics, // Penting untuk duplikat
+                pembahasan_umum: pembahasan, // Penting untuk duplikat
+                
+                tipe_soal: q.jenis_soal,
+                level_kesulitan: q.level_kesulitan,
+                status: q.status,
+                id_contributor: q.id_contributor,
+                gambar: q.attachments.length > 0 ? q.attachments[0].path_attachment : null,
+                
+                // Simpan list jawaban agar frontend bisa menyalinnya
+                list_jawaban: q.jawaban 
+            };
+        });
 
         res.status(200).json({ 
             message: 'Data dashboard contributor berhasil diambil.', 

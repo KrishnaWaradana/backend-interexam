@@ -32,7 +32,8 @@ const getAllSoal = async (req, res) => {
 const validateSoalAdmin = async (req, res) => {
   const { id } = req.params;
   const { status, keterangan } = req.body; 
-  const idAdmin = req.user ? req.user.id_user : 1; 
+  
+  const idAdmin = 1; // Asumsi ID Admin adalah 1
 
   try {
     const result = await prisma.$transaction(async (tx) => {
