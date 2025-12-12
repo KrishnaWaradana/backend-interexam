@@ -339,3 +339,52 @@
             res.status(500).json({ message: 'Gagal mengambil daftar keahlian.' });
         }
     };
+
+    // ... (kode temanmu yang CRUD Create, Read, Update, Delete di atas biarkan saja) ...
+
+// --- 5. TAMBAHAN: KHUSUS ADMIN UBAH STATUS (Approve/Suspend) ---
+exports.changeUserStatus = async (req, res) => {
+    const userId = parseInt(req.params.id);
+    const { status, reason } = req.body; // status: 'Verified', 'Suspend', 'Unverified'
+    
+    // Ambil ID Admin dari Token (Diset oleh middleware authenticateToken)
+    const adminId = req.user ? req.user.id : null; 
+
+    try {
+        // 1. Validasi Input Status
+        const validStatuses = ['Verified', 'Unverified', 'Suspend'];
+        if (!status || !validStatuses.includes(status)) {
+            return res.status(400).json({ message: "Status tidak valid. Gunakan: Verified, Unverified, atau Suspend." });
+        }
+
+        // 2. Transaction: Update User + Catat History di UserStatus
+        const result = await prisma.$transaction(async (tx) => {
+            // A. Update status User
+            const updatedUser = await tx.users.update({
+                where: { id_user: userId },
+                data: { status: status }
+            });
+
+            // B. Catat History
+            await tx.userStatus.create({
+                data: {
+                    id_user: userId,
+                    id_admin: adminId,
+                    status: status,
+                    description: reason || `Status diubah menjadi ${status} oleh Admin`
+                }
+            });
+
+            return updatedUser;
+        });
+
+        res.status(200).json({ 
+            message: `Berhasil mengubah status user menjadi ${status}.`, 
+            data: result 
+        });
+
+    } catch (error) {
+        console.error('Error changeStatus:', error);
+        res.status(500).json({ message: 'Gagal mengubah status user.', error: error.message });
+    }
+};

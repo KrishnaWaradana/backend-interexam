@@ -335,6 +335,7 @@ model PaketSoal {
   tanggal_dibuat DateTime?
   status         StatusPaket?
   nama_paket     String?        @db.VarChar(100)
+  image          String?        @db.VarChar(255)
   jumlah_soal    Int?
   durasi         Int?
   id_category    Int
