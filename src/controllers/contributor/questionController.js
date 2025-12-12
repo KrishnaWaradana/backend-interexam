@@ -6,7 +6,6 @@ const path = require('path');
 // --- HELPER: Function to delete file Robust ---
 const deleteFile = (filePath) => {
     if (!filePath) return;
-    // Pastikan path absolut
     const absolutePath = path.isAbsolute(filePath) 
         ? filePath 
         : path.join(global.__basedir, '../', filePath);
@@ -32,7 +31,7 @@ const getContributorIdFromDB = async () => {
 };
 
 // =================================================================
-// FUNGSI 1: ADD QUESTION (MULTI UPLOAD)
+// FUNGSI 1: ADD QUESTION
 // =================================================================
 const addQuestion = async (req, res) => {
     const files = req.files || {};
@@ -46,9 +45,7 @@ const addQuestion = async (req, res) => {
             pembahasan_umum, opsi_jawaban, action_type 
         } = req.body;
 
-        if (!id_topik || id_topik === "undefined" || id_topik === "null") {
-             throw new Error("ID Topik wajib dipilih!");
-        }
+        if (!id_topik || id_topik === "undefined" || id_topik === "null") throw new Error("ID Topik wajib dipilih!");
         const topicIdInt = parseInt(id_topik);
         const contributorId = await getContributorIdFromDB();
         const statusSoal = action_type === 'Ajukan' ? StatusSoal.need_verification : StatusSoal.draft;
@@ -56,7 +53,6 @@ const addQuestion = async (req, res) => {
         let jenisSoalPrisma = tipe_soal === 'pilihan_ganda' ? 'multiple_choice' : 'multiple_answer';
         if (tipe_soal !== 'pilihan_ganda' && tipe_soal !== 'multi_jawaban') jenisSoalPrisma = tipe_soal;
 
-        // 1. Create Soal
         const newSoal = await prisma.soal.create({
             data: {
                 tanggal_pembuatan: new Date().toISOString(),
@@ -69,24 +65,14 @@ const addQuestion = async (req, res) => {
             }
         });
         
-        // 2. Simpan Gambar Soal
         if (dbSoalPath) {
              await prisma.attachmentsSoal.create({
-                data: {
-                    path_attachment: dbSoalPath,
-                    keterangan: 'Gambar Soal Utama',
-                    id_soal: newSoal.id_soal
-                }
+                data: { path_attachment: dbSoalPath, keterangan: 'Gambar Soal Utama', id_soal: newSoal.id_soal }
              });
         }
 
-        // 3. Simpan Jawaban
         let parsedOpsi = [];
-        try {
-            parsedOpsi = JSON.parse(opsi_jawaban);
-        } catch (e) {
-            throw new Error("Format JSON opsi_jawaban tidak valid.");
-        }
+        try { parsedOpsi = JSON.parse(opsi_jawaban); } catch (e) { throw new Error("Format JSON opsi_jawaban tidak valid."); }
 
         let answerFileIndex = 0;
         const jawabanData = parsedOpsi.map((opsi) => {
@@ -109,30 +95,23 @@ const addQuestion = async (req, res) => {
             await prisma.jawabanSoal.createMany({ data: jawabanData });
         }
 
-        const message = action_type === 'Ajukan' ? 'Soal diajukan.' : 'Soal disimpan draft.';
-        res.status(201).json({ message: message, data: { soalId: newSoal.id_soal } });
+        res.status(201).json({ message: 'Soal berhasil disimpan.', data: { soalId: newSoal.id_soal } });
 
     } catch (error) {
         if (soalFile) deleteFile(soalFile.path);
         if (answerFilesList.length > 0) answerFilesList.forEach(f => deleteFile(f.path));
-        console.error('❌ Error addQuestion:', error.message);
         res.status(500).json({ message: error.message });
     }
 };
 
 // =================================================================
-// FUNGSI 2: GET QUESTIONS (DASHBOARD & EDIT PRE-FILL)
+// FUNGSI 2: GET QUESTIONS (PERBAIKAN: Kirim Text Soal & Jawaban)
 // =================================================================
 const getQuestionsByContributor = async (req, res) => {
     let contributorId;
-    try {
-        contributorId = await getContributorIdFromDB(); 
-    } catch (e) {
-        return res.status(500).json({ message: e.message });
-    }
+    try { contributorId = await getContributorIdFromDB(); } catch (e) { return res.status(500).json({ message: e.message }); }
 
     try {
-        // Statistik (Sama seperti sebelumnya)
         const totalSoal = await prisma.soal.count({ where: { id_contributor: contributorId } });
         const totalVerified = await prisma.soal.count({ where: { id_contributor: contributorId, status: StatusSoal.disetujui } });
         const totalDraft = await prisma.soal.count({ where: { id_contributor: contributorId, status: StatusSoal.draft } });
@@ -148,13 +127,12 @@ const getQuestionsByContributor = async (req, res) => {
             total_belum_diajukan: totalDraft + totalNeedVerification 
         };
 
-        // Fetch Data dengan Include Jawaban
         const questions = await prisma.soal.findMany({
             where: { id_contributor: contributorId },
             include: {
                 topic: { select: { nama_topics: true } },
                 attachments: true,
-                jawaban: true // WAJIB: Agar edit form bisa mengisi jawaban
+                jawaban: true // <--- PERBAIKAN: Ambil jawaban agar edit/duplikat jalan
             },
             orderBy: { tanggal_pembuatan: 'desc' }
         });
@@ -167,11 +145,10 @@ const getQuestionsByContributor = async (req, res) => {
                 nomor: q.id_soal, 
                 mata_pelajaran: q.topic ? q.topic.nama_topics : 'N/A', 
                 
-                // DATA PENTING YANG SEBELUMNYA KURANG:
+                // ⬇️ PERBAIKAN: Kirim field ini agar tabel tidak "-" dan Edit Form terisi
                 text_soal: q.text_soal, 
                 id_topik: q.id_topics,
                 pembahasan_umum: pembahasan,
-                catatan_revisi: null, // Placeholder jika belum ada tabel validasi
                 
                 tipe_soal: q.jenis_soal,
                 level_kesulitan: q.level_kesulitan,
@@ -179,31 +156,30 @@ const getQuestionsByContributor = async (req, res) => {
                 id_contributor: q.id_contributor,
                 gambar: q.attachments.length > 0 ? q.attachments[0].path_attachment : null,
                 
-                // List Jawaban untuk Edit Form
+                // ⬇️ PERBAIKAN: Kirim list jawaban agar Edit Form terisi gambar/opsi
                 list_jawaban: q.jawaban 
             };
         });
 
         res.status(200).json({ 
-            message: 'Data dashboard contributor berhasil diambil.', 
+            message: 'Data berhasil diambil.', 
             data: formattedQuestions, 
             statistics: statistics
         });
 
     } catch (error) {
-        console.error('Error saat mengambil soal contributor:', error); 
-        res.status(500).json({ message: 'Gagal mengambil data soal dari database.' });
+        console.error('Error getQuestions:', error); 
+        res.status(500).json({ message: 'Gagal mengambil data soal.' });
     }
 };
 
 // =================================================================
-// FUNGSI 3: EDIT QUESTION (PERBAIKAN LOGIKA GAMBAR)
+// FUNGSI 3: EDIT QUESTION (PERBAIKAN: LOGIKA GAMBAR HILANG)
 // =================================================================
 const editQuestion = async (req, res) => {
     const questionId = parseInt(req.params.id);
     if (!questionId) return res.status(400).json({ message: 'ID Soal wajib disertakan.' });
 
-    // Akses File
     const files = req.files || {};
     const newSoalFile = files['image_soal'] ? files['image_soal'][0] : null;
     const newAnswerFilesList = files['image_jawaban'] || [];
@@ -219,14 +195,11 @@ const editQuestion = async (req, res) => {
         // A. UPDATE GAMBAR SOAL UTAMA
         let finalSoalPath = null;
         if (newSoalFile) {
-            // Jika ada file baru, pakai file baru
             finalSoalPath = `uploads/questions/${newSoalFile.filename}`;
-            // Hapus file lama
             if (existingSoal.attachments.length > 0) {
                 deleteFile(existingSoal.attachments[0].path_attachment);
                 await prisma.attachmentsSoal.deleteMany({ where: { id_soal: questionId } });
             }
-            // Simpan path baru
             await prisma.attachmentsSoal.create({
                 data: { path_attachment: finalSoalPath, keterangan: 'Gambar Soal Utama', id_soal: questionId }
             });
@@ -245,7 +218,7 @@ const editQuestion = async (req, res) => {
             }
         });
 
-        // C. UPDATE JAWABAN (DENGAN LOGIKA OLD_PATH)
+        // C. UPDATE JAWABAN (LOGIKA PENTING AGAR GAMBAR TIDAK HILANG)
         await prisma.jawabanSoal.deleteMany({ where: { soal_id_soal: questionId } });
 
         const parsedOpsi = JSON.parse(opsi_jawaban);
@@ -254,15 +227,15 @@ const editQuestion = async (req, res) => {
         const jawabanDataBaru = parsedOpsi.map((opsi) => {
             let finalAnswerPath = null;
 
-            // KASUS 1: Upload Baru
+            // Priority 1: Ada upload baru
             if (opsi.has_image === true && newAnswerFilesList[answerFileIndex]) {
                  const file = newAnswerFilesList[answerFileIndex];
                  finalAnswerPath = `uploads/questions/${file.filename}`;
                  answerFileIndex++;
             } 
-            // KASUS 2: Pakai Gambar Lama (PENTING!)
+            // Priority 2: Tidak ada upload baru, tapi ada path lama (dikirim Frontend)
             else if (opsi.old_path && opsi.old_path !== "null" && opsi.old_path !== "") {
-                 finalAnswerPath = opsi.old_path;
+                 finalAnswerPath = opsi.old_path; // <--- INI KUNCI AGAR GAMBAR TIDAK HILANG
             }
 
             return {
@@ -286,81 +259,48 @@ const editQuestion = async (req, res) => {
     }
 };
 
-// =================================================================
-// FUNGSI 4: DELETE QUESTION
-// =================================================================
 const deleteQuestion = async (req, res) => {
     const questionId = parseInt(req.params.id);
-
     try {
         const existingSoal = await prisma.soal.findUnique({
             where: { id_soal: questionId },
             include: { attachments: true, jawaban: true } 
         });
-
         if (!existingSoal) return res.status(404).json({ message: 'Soal tidak ditemukan.' });
 
-        // Hapus Gambar Soal
         if (existingSoal.attachments && existingSoal.attachments.length > 0) {
             deleteFile(existingSoal.attachments[0].path_attachment);
         }
-
-        // Hapus Gambar Jawaban
         if (existingSoal.jawaban && existingSoal.jawaban.length > 0) {
              existingSoal.jawaban.forEach(item => {
-                 if (item.path_gambar_jawaban) {
-                      deleteFile(item.path_gambar_jawaban);
-                 }
+                 if (item.path_gambar_jawaban) deleteFile(item.path_gambar_jawaban);
              });
         }
-
         await prisma.attachmentsSoal.deleteMany({ where: { id_soal: questionId } });
         await prisma.jawabanSoal.deleteMany({ where: { soal_id_soal: questionId } });
         await prisma.soal.delete({ where: { id_soal: questionId } });
 
         res.status(200).json({ message: `Soal ID ${questionId} berhasil dihapus.` });
-
     } catch (error) {
-        console.error('Error saat menghapus soal:', error);
         res.status(500).json({ message: 'Gagal menghapus soal.' });
     }
 };
 
-// =================================================================
-// FUNGSI 5: GET COMPETENT SUBJECTS
-// =================================================================
 const getCompetentSubjects = async (req, res) => {
     try {
         const contributorId = await getContributorIdFromDB();
-
         const competentSubjects = await prisma.kompetensiUser.findMany({
-            where: { id_user: contributorId },
-            select: { id_subject: true }
+            where: { id_user: contributorId }, select: { id_subject: true }
         });
-
-        if (competentSubjects.length === 0) {
-            return res.status(200).json({ message: 'Contributor belum memiliki kompetensi.', data: [] });
-        }
-
+        if (competentSubjects.length === 0) return res.status(200).json({ message: 'Contributor belum memiliki kompetensi.', data: [] });
         const subjectIds = competentSubjects.map(comp => comp.id_subject);
         const subjects = await prisma.topics.findMany({
-            where: { id_topics: { in: subjectIds } },
-            select: { id_topics: true, nama_topics: true },
-            orderBy: { nama_topics: 'asc' }
+            where: { id_topics: { in: subjectIds } }, select: { id_topics: true, nama_topics: true }, orderBy: { nama_topics: 'asc' }
         });
-
         res.status(200).json({ message: 'Sukses', data: subjects });
-
     } catch (error) {
-        console.error('Error competent subjects:', error);
         res.status(500).json({ message: 'Gagal mengambil data kompetensi.' });
     }
 };
 
-module.exports = { 
-    addQuestion, 
-    getQuestionsByContributor,
-    editQuestion,
-    deleteQuestion,
-    getCompetentSubjects 
-};
+module.exports = { addQuestion, getQuestionsByContributor, editQuestion, deleteQuestion, getCompetentSubjects };
