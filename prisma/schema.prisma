@@ -417,7 +417,7 @@ model PaketAttempt {
 model JawabanSoal {
   id_jawaban         Int                      @id @default(autoincrement())
   opsi_jawaban_text  String?                  @db.VarChar(100)
-  opsi_jawaban_image String?                  @db.VarChar(255) // <-- Saran: String (URL) lebih baik dari Bytes
+  path_gambar_jawaban String?                  @db.VarChar(255) // <-- Saran: String (URL) lebih baik dari Bytes
   status             Boolean?                 @default(false)
   short_answer       String?                  @db.VarChar(45)
   soal_id_soal       Int
