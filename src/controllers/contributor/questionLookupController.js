@@ -14,23 +14,40 @@ exports.getSubjectsLookup = async (req, res) => {
     }
 };
 
-// 2. TOPIK 
+// 2. TOPIK
 exports.getTopicsLookup = async (req, res) => {
     const { subjectId } = req.params; 
+  
+    const idSubjectInt = parseInt(subjectId);
+
+    if (isNaN(idSubjectInt)) {
+        return res.status(400).json({ message: 'ID Mata Pelajaran tidak valid.' });
+    }
     
     try {
         const topics = await prisma.topics.findMany({
-            where: { id_subjects: parseInt(subjectId) }, 
-            select: { id_topics: true, nama_topics: true },
+            where: { id_subjects: idSubjectInt },
+            include: {
+                jenjang: true 
+            },
             orderBy: { nama_topics: 'asc' }
         });
-        res.status(200).json({ data: topics.map(t => ({ id: t.id_topics, name: t.nama_topics })) });
+
+        const mappedData = topics.map(t => ({
+            id: t.id_topics,
+            name: t.nama_topics,
+            jenjang_name: t.jenjang ? t.jenjang.nama_jenjang : 'Umum'
+        }));
+
+        res.status(200).json({ data: mappedData });
+
     } catch (error) {
+        console.error("Error getTopicsLookup:", error);
         res.status(500).json({ message: 'Gagal mengambil data Topik.' });
     }
 };
 
-// 3. LEVEL KESULITAN (Dari ENUM)
+// LEVEL KESULITAN (Dari ENUM)
 exports.getLevelKesulitanLookup = (req, res) => {
     const levels = Object.keys(LevelKesulitan).map(key => ({
         value: LevelKesulitan[key],

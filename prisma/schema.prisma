@@ -245,6 +245,7 @@ model Soal {
   level_kesulitan     LevelKesulitan?
   id_contributor      Int
   status              StatusSoal?
+  catatan_revisi      String?  @db.Text
   id_topics           Int
   id_subtopics        Int? // ⬅️ BENAR
   id_detail_subtopics Int? // ⬅️ BENAR
@@ -447,7 +448,7 @@ model HistoryPengerjaanPaket {
 
 model AttachmentsSoal {
   id_attachment   Int     @id @default(autoincrement())
-  path_attachment String? @db.VarChar(100)
+  path_attachment String? @db.VarChar(255)
   keterangan      String? @db.VarChar(100)
   id_soal         Int
   soal            Soal    @relation(fields: [id_soal], references: [id_soal])
