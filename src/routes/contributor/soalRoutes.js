@@ -24,6 +24,8 @@ router.get('/my-questions',
     questionController.getQuestionsByContributor 
 );
 
+router.get('/question/:id', questionController.getQuestionDetail);
+
 // 2. CREATE
 router.post(
     '/question', 
@@ -32,7 +34,8 @@ router.post(
 
     upload.fields([
         { name: 'image_soal', maxCount: 1 },      
-        { name: 'image_jawaban', maxCount: 10 }  
+        { name: 'image_jawaban', maxCount: 10 },
+        { name: 'image_pembahasan', maxCount: 1 }
     ]), 
     
     questionController.addQuestion 
@@ -46,7 +49,8 @@ router.put(
     
     upload.fields([
         { name: 'image_soal', maxCount: 1 },
-        { name: 'image_jawaban', maxCount: 10 }
+        { name: 'image_jawaban', maxCount: 10 },
+        { name: 'image_pembahasan', maxCount: 1 }
     ]),
     
     questionController.editQuestion 
