@@ -112,7 +112,7 @@ const googleLogin = async (req, res) => {
         });
       }
 
-      if (user.status === 'Suspend') {
+      if (user.status === 'Suspend') { 
         return res.status(403).json({ message: "Akun Anda disuspend." });
       }
 
