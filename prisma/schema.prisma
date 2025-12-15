@@ -238,31 +238,32 @@ model CategorySubject {
 }
 
 model Soal {
-  id_soal             Int              @id @default(autoincrement())
-  tanggal_pembuatan   String?          @db.VarChar(45)
-  text_soal           String?          @db.VarChar(1000)
-  jenis_soal          JenisSoal?
-  level_kesulitan     LevelKesulitan?
-  id_contributor      Int
-  status              StatusSoal?
-  id_topics           Int
-  id_subtopics        Int
-  id_detail_subtopics Int
-  
-  contributor         Users            @relation("UserSoal", fields: [id_contributor], references: [id_user])
-  topic               Topics           @relation(fields: [id_topics], references: [id_topics])
-  subTopic            SubTopics        @relation(fields: [id_subtopics], references: [id_subtopics])
-  detailSubTopic      DetailSubTopics  @relation(fields: [id_detail_subtopics], references: [id_detail_subtopics])
-  
-  soalTags            SoalTags[]
-  validasi            ValidasiSoal[]
-  reports             Reports[]
-  favorites           Favorites[]
-  soalPaket           SoalPaketSoal[]
-  jawaban             JawabanSoal[]
-  attachments         AttachmentsSoal[]
+  id_soal             Int              @id @default(autoincrement())
+  tanggal_pembuatan   String?          @db.VarChar(45)
+  text_soal           String?          @db.VarChar(1000)
+  jenis_soal          JenisSoal?
+  level_kesulitan     LevelKesulitan?
+  id_contributor      Int
+  status              StatusSoal?
+  catatan_revisi      String?  @db.Text
+  id_topics           Int
+  id_subtopics        Int? // ⬅️ BENAR
+  id_detail_subtopics Int? // ⬅️ BENAR
+  
+  contributor         Users            @relation("UserSoal", fields: [id_contributor], references: [id_user])
+  topic               Topics           @relation(fields: [id_topics], references: [id_topics])
+  subTopic            SubTopics?       @relation(fields: [id_subtopics], references: [id_subtopics]) // ⬅️ KOREKSI: TAMBAH TANDA TANYA
+  detailSubTopic      DetailSubTopics? @relation(fields: [id_detail_subtopics], references: [id_detail_subtopics]) // ⬅️ KOREKSI: TAMBAH TANDA TANYA
+  
+  soalTags            SoalTags[]
+  validasi            ValidasiSoal[]
+  reports             Reports[]
+  favorites           Favorites[]
+  soalPaket           SoalPaketSoal[]
+  jawaban             JawabanSoal[]
+  attachments         AttachmentsSoal[]
 
-  @@map("soal")
+  @@map("soal")
 }
 
 model SoalTags {
@@ -335,6 +336,7 @@ model PaketSoal {
   tanggal_dibuat DateTime?
   status         StatusPaket?
   nama_paket     String?        @db.VarChar(100)
+  image          String?        @db.VarChar(255)
   jumlah_soal    Int?
   durasi         Int?
   id_category    Int
@@ -416,7 +418,7 @@ model PaketAttempt {
 model JawabanSoal {
   id_jawaban         Int                      @id @default(autoincrement())
   opsi_jawaban_text  String?                  @db.VarChar(100)
-  opsi_jawaban_image String?                  @db.VarChar(255) // <-- Saran: String (URL) lebih baik dari Bytes
+  path_gambar_jawaban String?                  @db.VarChar(255) // <-- Saran: String (URL) lebih baik dari Bytes
   status             Boolean?                 @default(false)
   short_answer       String?                  @db.VarChar(45)
   soal_id_soal       Int
@@ -446,7 +448,7 @@ model HistoryPengerjaanPaket {
 
 model AttachmentsSoal {
   id_attachment   Int     @id @default(autoincrement())
-  path_attachment String? @db.VarChar(100)
+  path_attachment String? @db.VarChar(255)
   keterangan      String? @db.VarChar(100)
   id_soal         Int
   soal            Soal    @relation(fields: [id_soal], references: [id_soal])

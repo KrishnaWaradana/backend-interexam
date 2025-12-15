@@ -115,7 +115,7 @@ Content-Type: application/json
 {
   "nama_topics": "Ide Usaha",
   "id_subjects": 8, 
-  "id_jenjang": 5,
+  "id_jenjang": 1,
   "keterangan": "Materi Ide Kreatif dan Usaha"
 }
 
@@ -199,3 +199,280 @@ Content-Type: application/json
 ### 6. DELETE JENJANG (DELETE)
 # Hapus Jenjang "S3 Doktor" (ID 7)
 DELETE http://localhost:5000/api/v1/admin/jenjang/7
+
+
+
+
+
+### ==========================================
+### FASE 1: TEST LOOKUP (DROPDOWNS)
+### ==========================================
+
+### 1. GET MATA PELAJARAN
+GET http://localhost:5000/api/v1/contributor/lookup/subjects
+
+---
+
+### 2. GET LEVEL KESULITAN
+GET http://localhost:5000/api/v1/contributor/lookup/levels
+
+---
+
+### 3. GET TOPIK BERDASARKAN SUBJECT ID
+# ⚠️ Ganti ID 1 dengan ID Mata Pelajaran yang ada.
+GET http://localhost:5000/api/v1/contributor/lookup/topics/1
+
+### ==========================================
+### FASE 2: TEST CREATE SOAL (POST JSON)
+### ==========================================
+
+### 4. TEST CREATE SOAL (AJUKAN) - TANPA GAMBAR
+# Tujuan: Simpan status 'need_verification' (gunakan action_type: Ajukan).
+POST http://localhost:5000/api/v1/contributor/question
+Content-Type: application/json
+
+{
+  "tipe_soal": "pilihan_ganda",
+  "text_soal": "Sebutkan nama Ibu Kota negara Indonesia saat ini?",
+  "id_mata_pelajaran": "1",
+  "id_topik": "1",
+  "level_kesulitan": "mudah",
+  "pembahasan_umum": "DKI Jakarta adalah ibu kota negara Republik Indonesia.",
+  "action_type": "Ajukan",
+  "opsi_jawaban": "[{\"text\":\"Bandung\",\"is_correct\":false},{\"text\":\"DKI Jakarta\",\"is_correct\":true},{\"text\":\"Surabaya\",\"is_correct\":false}]"
+}
+
+
+
+### 5. TEST CREATE SOAL (DRAFT) - TANPA GAMBAR
+# Tujuan: Simpan status 'draft' (gunakan action_type: Simpan).
+POST http://localhost:5000/api/v1/contributor/question
+Content-Type: application/json
+
+{
+  "tipe_soal": "multi_jawaban",
+  "text_soal": "Planet manakah yang termasuk planet luar?",
+  "id_mata_pelajaran": "1",
+  "id_topik": "5",
+  "level_kesulitan": "sedang",
+  "pembahasan_umum": "Planet luar adalah planet raksasa gas, yaitu Jupiter, Saturnus, Uranus, dan Neptunus.",
+  "action_type": "Simpan",
+  "opsi_jawaban": "[{\"text\":\"Mars\",\"is_correct\":false},{\"text\":\"Jupiter\",\"is_correct\":true},{\"text\":\"Merkurius\",\"is_correct\":false},{\"text\":\"Saturnus\",\"is_correct\":true}]"
+}
+
+
+### 6. TEST VALIDASI GAGAL (Missing Required Field)
+# Tujuan: Memverifikasi validasi 400 Bad Request.
+POST http://localhost:5000/api/v1/contributor/question
+Content-Type: application/json
+
+{
+  "tipe_soal": "pilihan_ganda",
+  "text_soal": "", 
+  "id_mata_pelajaran": "1",
+  "id_topik": "5",
+  "level_kesulitan": "sedang",
+  "pembahasan_umum": "Pembahasan",
+  "action_type": "Ajukan",
+  "opsi_jawaban": "[{\"text\":\"A\",\"is_correct\":true}]"
+}
+
+
+
+### Variabel Global untuk Testing
+# Contributor ID akan diambil secara otomatis (findFirst Contributor/Admin)
+@subjectIdYangAdaValidatornya = 1   # Ganti dengan Subject ID yang memiliki Validator di DB Anda
+@uniqueId = 135                      # ID unik untuk testing
+
+### -----------------------------------------------------------
+### 1. TEST SUKSES: Pembuatan Soal dan Filter Validator
+# @name testSubmitSuccessDebugDB
+# Menguji:
+# 1. Soal berhasil dibuat (Status 201).
+# 2. Logic Filter Validator berfungsi (Array validators tidak kosong).
+# 3. Contributor ID terambil dari DB.
+
+POST http://localhost:5000/api/v1/contributor/question 
+Content-Type: application/json 
+ 
+{ 
+  "tipe_soal": "pilihan_ganda",
+  "text_soal": "Soal Sukses Debug DB ID: {{uniqueId}}",
+  "id_mata_pelajaran": "{{subjectIdYangAdaValidatornya}}",
+  "id_topik": "1",
+  "level_kesulitan": "sedang",
+  "pembahasan_umum": "Pengujian mode debug database.",
+  "action_type": "Ajukan", 
+  "opsi_jawaban": "[{\"text\":\"Opsi A\",\"is_correct\":true}, {\"text\":\"Opsi B\",\"is_correct\":false}]"
+}
+
+### -----------------------------------------------------------
+### 2. TEST DRAFT: Simpan sebagai Draft (Validator list harus kosong)
+# @name testSaveDraftDebugDB
+# Menguji: Status Soal = draft dan Validator list kosong.
+
+POST http://localhost:5000/api/v1/contributor/question 
+Content-Type: application/json 
+
+{ 
+  "tipe_soal": "pilihan_ganda",
+  "text_soal": "Soal Draft Debug DB ID: {{uniqueId}}-Draft",
+  "id_mata_pelajaran": "{{subjectIdYangAdaValidatornya}}",
+  "id_topik": "1",
+  "level_kesulitan": "mudah",
+  "pembahasan_umum": "Pengujian simpan draft.",
+  "action_type": "Draft", 
+  "opsi_jawaban": "[{\"text\":\"Opsi X\",\"is_correct\":true}, {\"text\":\"Opsi Y\",\"is_correct\":false}]"
+}
+### Variabel Global untuk Testing
+# Contributor ID akan diambil secara otomatis (findFirst Contributor/Admin dari DB)
+@subjectIdYangAdaValidatornya = 1   # Ganti dengan Subject ID yang ada di tabel Topics Anda
+@uniqueId = 137                      # ID unik untuk testing
+
+### -----------------------------------------------------------
+### 1. TEST ADD (POST): Pembuatan Soal dan Filter Validator
+# @name testSubmitSuccessDebugDB
+# Menguji:
+# 1. Soal berhasil dibuat (Status 201).
+# 2. Logic Filter Validator berfungsi (Array validators tidak kosong).
+
+POST http://localhost:5000/api/v1/contributor/question 
+Content-Type: application/json 
+ 
+{ 
+  "tipe_soal": "pilihan_ganda",
+  "text_soal": "Soal Sukses Debug DB ID: {{uniqueId}}",
+  "id_mata_pelajaran": "{{subjectIdYangAdaValidatornya}}",
+  "id_topik": "1",
+  "level_kesulitan": "sedang",
+  "pembahasan_umum": "Pengujian mode debug database.",
+  "action_type": "Ajukan", 
+  "opsi_jawaban": "[{\"text\":\"Opsi A\",\"is_correct\":true}, {\"text\":\"Opsi B\",\"is_correct\":false}]"
+}
+
+### -----------------------------------------------------------
+### 2. TEST READ (GET): Ambil Daftar Soal dan Statistik Dashboard
+# @name testReadQuestionsDebugDB
+# Menguji: Mengambil semua soal yang dibuat oleh Contributor ID yang terdeteksi otomatis dari DB.
+
+GET http://localhost:5000/api/v1/contributor/my-questions
+
+
+### Variabel Global untuk Testing
+# 🚨 Ganti dengan ID Soal yang SUDAH ADA di DB Anda (misalnya ID 7 atau 8, yang dibuat oleh Contributor ID 6)
+@existingQuestionId = 8 
+@subjectIdYangAdaValidatornya = 1 
+@uniqueId = 140
+
+### -----------------------------------------------------------
+### 1. TEST ADD (POST): Pembuatan Soal Baru (CREATE)
+# @name testSubmitSuccessDebugDB
+# Ekspektasi: Status 201 Created. Soal baru dibuat.
+
+POST http://localhost:5000/api/v1/contributor/question 
+Content-Type: application/json 
+ 
+{ 
+  "tipe_soal": "pilihan_ganda",
+  "text_soal": "Soal BARU ID: {{uniqueId}} (TEST CREATE)",
+  "id_mata_pelajaran": "{{subjectIdYangAdaValidatornya}}",
+  "id_topik": "1",
+  "level_kesulitan": "sedang",
+  "pembahasan_umum": "Pengujian mode debug database.",
+  "action_type": "Draft", 
+  "opsi_jawaban": "[{\"text\":\"Opsi A\",\"is_correct\":true}, {\"text\":\"Opsi B\",\"is_correct\":false}]"
+}
+
+### -----------------------------------------------------------
+### 2. TEST UPDATE (PUT): Edit Soal Menggunakan ID yang Sudah Ada
+# @name testUpdateQuestion
+# Menguji: Mengubah teks, level, dan opsi jawaban soal ID @existingQuestionId
+# Ekspektasi: Status 200 OK. Status soal diubah menjadi 'need_verification'.
+
+PUT http://localhost:5000/api/v1/contributor/question/{{existingQuestionId}} 
+Content-Type: application/json 
+ 
+{ 
+  "tipe_soal": "pilihan_ganda",
+  "text_soal": "UPDATE: Soal ID {{existingQuestionId}} FINAL DIUBAH! (Level Sulit)",
+  "id_mata_pelajaran": "{{subjectIdYangAdaValidatornya}}",
+  "id_topik": "1",
+  "level_kesulitan": "sulit", 
+  "pembahasan_umum": "Pembahasan FINAL setelah UPDATE.",
+  "action_type": "Ajukan", 
+  "opsi_jawaban": "[{\"text\":\"Jawaban FINAL UPDATE OK\",\"is_correct\":true}, {\"text\":\"Jawaban lama dihapus\",\"is_correct\":false}]"
+}
+
+### -----------------------------------------------------------
+### 3. TEST READ (GET): Verifikasi Data Setelah Update
+# @name testReadQuestionsDebugDB
+# Ekspektasi: Cek array data, soal ID {{existingQuestionId}} harus memiliki status 'need_verification' dan level 'sulit'.
+
+GET http://localhost:5000/api/v1/contributor/my-questions
+
+@questionIdToDelete = 26
+
+### -----------------------------------------------------------
+### 1. TEST DELETE (DELETE)
+# @name testDeleteQuestion
+# Menguji: Menghapus soal dan semua relasinya (jawaban, attachment).
+
+DELETE http://localhost:5000/api/v1/contributor/question/{{questionIdToDelete}}
+
+### ==============================================
+### KONFIGURASI TESTING
+### ==============================================
+@baseUrl = http://localhost:5000/api/v1
+# GANTI ANGKA DI BAWAH INI DENGAN ID SOAL YANG BARU DIBUAT DI PRISMA STUDIO
+@idSoal = 1
+
+
+### ==============================================
+### 1. TEST DASHBOARD VALIDATOR
+### ==============================================
+# Ekspektasi: Muncul soal "Bakteri" tadi.
+# Jika kosong [], cek apakah hardcode ID di controller sudah sama dengan User Validator di database?
+GET {{baseUrl}}/validator/bank-soal
+Content-Type: application/json
+
+
+### ==============================================
+### 2. TEST LIHAT DETAIL SOAL
+### ==============================================
+# Ekspektasi: Muncul detail lengkap (Text soal, Subtopik 'Bakteri', dll)
+GET {{baseUrl}}/validator/bank-soal/{{idSoal}}
+Content-Type: application/json
+
+
+### ==============================================
+### 3. TEST VALIDASI: SETUJUI (APPROVE)
+### ==============================================
+# Ekspektasi: Status berubah jadi 'disetujui'
+PUT {{baseUrl}}/validator/bank-soal/2/validate
+Content-Type: application/json
+
+{
+    "status": "disetujui"
+}
+
+
+### ==============================================
+### 4. TEST VALIDASI: TOLAK (REJECT)
+### ==============================================
+# Gunakan ini jika ingin mengetes alur penolakan (Revisi)
+# Ekspektasi: Status berubah jadi 'ditolak' & ada history keterangan
+PUT {{baseUrl}}/validator/bank-soal/{{idSoal}}/validate
+Content-Type: application/json
+
+{
+    "status": "ditolak",
+    "keterangan": "Soal terlalu mudah, tolong tambahkan opsi pengecoh."
+}
+
+
+### ==============================================
+### 5. TEST ADMIN (GOD MODE)
+### ==============================================
+# Admin bisa melihat semua soal tanpa peduli mapel
+GET {{baseUrl}}/admin/bank-soal
+Content-Type: application/json
