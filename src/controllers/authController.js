@@ -5,7 +5,10 @@ const { verifyGoogleToken } = require('../utils/googleAuth');
 const prisma = new PrismaClient();
 const JWT_SECRET = process.env.JWT_SECRET;
 
-const googleLogin = async (req, res) => {
+// ==========================================
+// 1. FUNGSI LOGIN GOOGLE
+// ==========================================
+exports.googleLogin = async (req, res) => {
   // roleTarget: 'subscriber' atau 'internal'
   // requestRole: 'Validator' atau 'Contributor' (hanya jika register internal)
   const { token, roleTarget, requestRole } = req.body; 
@@ -21,9 +24,9 @@ const googleLogin = async (req, res) => {
     let userRole = '';
     let dbPayload = {}; 
 
-    // ==========================================
+    // ------------------------------------------
     // LOGIC A: SUBSCRIBER (Siswa/User Umum)
-    // ==========================================
+    // ------------------------------------------
     if (roleTarget === 'subscriber') {
       // Cek apakah subscriber sudah ada?
       user = await prisma.subscribers.findFirst({
@@ -36,7 +39,8 @@ const googleLogin = async (req, res) => {
           data: {
             email_subscriber: email,
             nama_subscriber: name,
-            googleId: googleId
+            googleId: googleId,
+            foto: picture // Simpan foto google jika ada kolomnya
             // status tidak dimasukkan karena ikut logika paket langganan
           }
         });
@@ -54,9 +58,9 @@ const googleLogin = async (req, res) => {
       dbPayload = { id: user.id_subscriber, role: 'subscriber' };
     } 
     
-    // ==========================================
+    // ------------------------------------------
     // LOGIC B: INTERNAL (Admin/Validator/Contributor)
-    // ==========================================
+    // ------------------------------------------
     else {
       // Cek apakah user internal sudah ada?
       user = await prisma.users.findFirst({
@@ -71,8 +75,7 @@ const googleLogin = async (req, res) => {
            });
         }
 
-        // Buat User Baru (Status Unverified)
-        // Gunakan Transaction agar User dan History tercatat bersamaan
+        // Buat User Baru (Status Unverified) & Catat History
         await prisma.$transaction(async (tx) => {
           const newUser = await tx.users.create({
             data: {
@@ -80,7 +83,8 @@ const googleLogin = async (req, res) => {
               nama_user: name,
               googleId: googleId,
               role: requestRole,
-              status: 'Unverified' // <--- PENTING: Tahan dulu
+              foto: picture,
+              status: 'Unverified' // <--- Tahan dulu
             }
           });
 
@@ -104,7 +108,7 @@ const googleLogin = async (req, res) => {
 
       // --- Skenario 2: User Sudah Ada (Login) ---
       
-      // Cek Status di kolom Users (Snapshot) -> Lebih Cepat
+      // Cek Status (Snapshot)
       if (user.status === 'Unverified') {
         return res.status(403).json({ 
           message: "Akun belum disetujui Admin. Hubungi admin.",
@@ -128,7 +132,7 @@ const googleLogin = async (req, res) => {
       dbPayload = { id: user.id_user, role: user.role };
     }
 
-    // 3. Buat JWT Token (Hanya jika lolos verifikasi)
+    // 3. Buat JWT Token
     const appToken = jwt.sign(dbPayload, JWT_SECRET, { expiresIn: '1d' });
 
     return res.status(200).json({
@@ -144,9 +148,81 @@ const googleLogin = async (req, res) => {
     });
 
   } catch (error) {
-    console.error(error);
+    console.error("Google Login Error:", error);
     return res.status(401).json({ message: "Auth failed", error: error.message });
   }
 };
 
-module.exports = { googleLogin };
+// ==========================================
+// 2. FUNGSI SESSION PERSISTENCE (GET ME)
+// ==========================================
+exports.getMe = async (req, res) => {
+  try {
+    // req.user didapat dari Middleware authenticateToken
+    // Isinya: { id: 1, role: 'subscriber' } atau { id: 5, role: 'Admin' }
+    const { id, role } = req.user; 
+
+    let user = null;
+
+    // Cek User berdasarkan Role yang tersimpan di Token
+    if (role === 'subscriber') {
+      // Jika token milik Subscriber, cari di tabel subscribers
+      user = await prisma.subscribers.findUnique({
+        where: { id_subscriber: id },
+        select: {
+          id_subscriber: true,
+          nama_subscriber: true,
+          email_subscriber: true,
+          foto: true,
+          // Subscribers mungkin tidak punya kolom 'role' di DB, jadi kita hardcode di return
+        }
+      });
+      
+      // Normalisasi output agar Frontend tidak bingung
+      if (user) {
+        user.role = 'subscriber';
+        user.nama = user.nama_subscriber; // Alias
+        user.id = user.id_subscriber;     // Alias
+      }
+
+    } else {
+      // Jika token milik Admin/Validator/Contributor, cari di tabel users
+      user = await prisma.users.findUnique({
+        where: { id_user: id },
+        select: {
+          id_user: true,
+          nama_user: true,
+          email_user: true,
+          role: true,
+          foto: true,
+          status: true
+        }
+      });
+
+      // Normalisasi output
+      if (user) {
+        user.nama = user.nama_user; // Alias
+        user.id = user.id_user;     // Alias
+      }
+    }
+
+    if (!user) {
+      return res.status(404).json({ message: "User tidak ditemukan / Token kedaluwarsa." });
+    }
+
+    res.status(200).json({ 
+      message: "Session valid", 
+      user: user 
+    });
+
+  } catch (error) {
+    console.error("Error getMe:", error);
+    res.status(500).json({ message: "Gagal memuat sesi user." });
+  }
+};
+
+exports.logout = async (req, res) => {
+     res.status(200).json({ 
+        message: "Logout berhasil. Silakan hapus token di Client side." 
+    });
+};
