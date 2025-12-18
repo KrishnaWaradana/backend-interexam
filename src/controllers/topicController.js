@@ -12,13 +12,11 @@ const topicController = {
         return res.status(400).json({ error: "Nama topik, Mata Pelajaran, dan Jenjang wajib diisi" });
       }
 
-      // B. CEK DUPLIKAT DATA
-      // Kita cari di database: Apakah ada topik dengan Nama, Subject, DAN Jenjang yang sama?
       const existingTopic = await prisma.topics.findFirst({
         where: {
           nama_topics: {
             equals: nama_topics,
-            mode: 'insensitive' // Agar 'Aljabar' dan 'aljabar' dianggap sama
+            mode: 'insensitive' 
           },
           id_subjects: parseInt(id_subjects),
           id_jenjang: parseInt(id_jenjang)
@@ -30,7 +28,7 @@ const topicController = {
         return res.status(409).json({ error: "Topik ini sudah ada di Mata Pelajaran dan Jenjang tersebut." });
       }
 
-      // C. Simpan ke Database (Jika aman)
+      // C. Simpan ke Database
       const newTopic = await prisma.topics.create({
         data: {
           nama_topics: nama_topics,
@@ -56,8 +54,8 @@ const topicController = {
     try {
       const topics = await prisma.topics.findMany({
         include: {
-          subject: true, // Relasi ke tabel subjects
-          jenjang: true  // Relasi ke tabel jenjang
+          subject: true, 
+          jenjang: true 
         },
         orderBy: { id_topics: 'desc' }
       });
@@ -97,29 +95,26 @@ const topicController = {
 // --- 4. UPDATE TOPIC (Lengkap dengan Validasi Duplikat) ---
   updateTopic: async (req, res) => {
     try {
-      // 1. Ambil ID dari URL dan Data dari Body
       const { id } = req.params;
       const { nama_topics, keterangan, id_subjects, id_jenjang } = req.body;
-      const idToUpdate = parseInt(id); // Pastikan ID berupa integer
+      const idToUpdate = parseInt(id); 
 
       // 2. Validasi Input Dasar
       if (!nama_topics || !id_subjects || !id_jenjang) {
           return res.status(400).json({ error: "Nama topik, Mata Pelajaran, dan Jenjang wajib diisi" });
       }
 
-      // 3. CEK DUPLIKAT (Logika Penting)
-      // Cari apakah ada topik LAIN yang punya Nama + Mapel + Jenjang sama.
-      // Kita gunakan 'NOT' untuk memastikan kita tidak mengecek data yang sedang diedit ini sendiri.
+     
       const duplicateCheck = await prisma.topics.findFirst({
         where: {
           nama_topics: { 
             equals: nama_topics, 
-            mode: 'insensitive' // Tidak peduli huruf besar/kecil
+            mode: 'insensitive' 
           },
           id_subjects: parseInt(id_subjects),
           id_jenjang: parseInt(id_jenjang),
           NOT: {
-            id_topics: idToUpdate // <--- KUNCI: Kecualikan ID saya sendiri
+            id_topics: idToUpdate 
           }
         }
       });
@@ -134,7 +129,7 @@ const topicController = {
         where: { id_topics: idToUpdate },
         data: {
           nama_topics: nama_topics,
-          keterangan: keterangan || "", // Update keterangan (opsional)
+          keterangan: keterangan || "", 
           id_subjects: parseInt(id_subjects),
           id_jenjang: parseInt(id_jenjang)
         },
@@ -170,7 +165,37 @@ const topicController = {
       }
       res.status(500).json({ error: "Gagal menghapus topik" });
     }
-  }
+  }, 
+  
+  getTopicsBySubjectId: async (req, res) => {
+      try {
+        const { subjectId } = req.params;
+        
+        // Validasi sederhana
+        if (!subjectId || isNaN(parseInt(subjectId))) {
+          return res.status(400).json({ error: "ID Subject tidak valid" });
+        }
+  
+        const topics = await prisma.topics.findMany({
+          where: { id_subjects: parseInt(subjectId) },
+          // orderBy: { nama_topics: 'asc' }
+          include: {
+            jenjang: true 
+        },
+        orderBy: { nama_topics: 'asc' }
+        });
+        
+        res.status(200).json({ 
+          message: "Data topik berhasil diambil",
+          data: topics 
+        });
+  
+      } catch (error) {
+        console.error("Error Get Topics By Subject:", error);
+        res.status(500).json({ error: "Gagal mengambil data topik untuk dropdown" });
+      }
+    }
 };
+
 
 module.exports = topicController;
