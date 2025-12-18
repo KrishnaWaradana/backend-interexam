@@ -35,11 +35,14 @@ exports.addSubject = async (req, res) => {
 
 // --- 2. CRUD READ (Get All Subjects) ---
 exports.getAllSubjects = async (req, res) => {
+    // console.log(" [DEBUG] Request masuk ke getAllSubjects!");
     try {
         const subjects = await prisma.subjects.findMany({
             select: { id_subject: true, nama_subject: true, keterangan: true }, 
             orderBy: { nama_subject: 'asc' }
         });
+
+        // console.log(" [DEBUG] Data dari Database:", subjects);
 
         const subjectsWithKeterangan = subjects.map(s => ({
             id_subject: s.id_subject,

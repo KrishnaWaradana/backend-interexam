@@ -10,14 +10,13 @@ global.__basedir = __dirname;
 
 const prisma = require('./config/prismaClient'); 
 
-// ⬇️ IMPORT SEMUA ROUTES ⬇️
+const contributorLookupRoutes = require('./routes/contributor/lookupRoutes');
 const adminRoutes = require('./routes/adminRoutes'); 
 const topicRoutes = require('./routes/topicRoutes');
 const authRoutes = require('./routes/authRoutes');
 const jenjangRoutes = require('./routes/jenjangRoutes');
 const adminBankSoalRoutes = require('./routes/adminBankSoalRoutes');
 
-// 💡 Ini adalah file routes yang Anda buat (src/routes/contributor/soalRoutes.js)
 const soalRoutes = require('./routes/contributor/soalRoutes'); 
 const validatorBankSoalRoutes = require('./routes/validator/BankSoalRoutes');
 
@@ -31,7 +30,7 @@ app.use(cors({
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
 
-// ⬇️ DAFTAR ROUTE UTAMA (PREFIXING) ⬇️
+//  DAFTAR ROUTE UTAMA (PREFIXING) 
 
 // Admin Routes (Contoh: /api/v1/admin/users)
 app.use('/api/v1', adminRoutes); 
@@ -54,9 +53,11 @@ app.use('/api/v1/admin/bank-soal', adminBankSoalRoutes);
 app.use('/api/v1/validator/bank-soal', validatorBankSoalRoutes);
 
 
-// 🚀 KOREKSI UTAMA: ROUTE CONTRIBUTOR/SOAL
+// Jalan untuk ambil data Jenjang & Subject
+app.use('/api/v1/contributor/lookup', contributorLookupRoutes);
 // Ini akan membuat endpoint POST yang dicari menjadi: /api/v1/contributor/question
 app.use('/api/v1/contributor', soalRoutes); 
+
 
 
 const PORT = 5000;
