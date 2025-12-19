@@ -158,15 +158,11 @@ exports.googleLogin = async (req, res) => {
 // ==========================================
 exports.getMe = async (req, res) => {
   try {
-    // req.user didapat dari Middleware authenticateToken
-    // Isinya: { id: 1, role: 'subscriber' } atau { id: 5, role: 'Admin' }
     const { id, role } = req.user; 
 
     let user = null;
 
-    // Cek User berdasarkan Role yang tersimpan di Token
     if (role === 'subscriber') {
-      // Jika token milik Subscriber, cari di tabel subscribers
       user = await prisma.subscribers.findUnique({
         where: { id_subscriber: id },
         select: {
@@ -174,19 +170,16 @@ exports.getMe = async (req, res) => {
           nama_subscriber: true,
           email_subscriber: true,
           foto: true,
-          // Subscribers mungkin tidak punya kolom 'role' di DB, jadi kita hardcode di return
         }
       });
       
-      // Normalisasi output agar Frontend tidak bingung
       if (user) {
         user.role = 'subscriber';
-        user.nama = user.nama_subscriber; // Alias
-        user.id = user.id_subscriber;     // Alias
+        user.nama = user.nama_subscriber; 
+        user.id = user.id_subscriber;     
       }
 
     } else {
-      // Jika token milik Admin/Validator/Contributor, cari di tabel users
       user = await prisma.users.findUnique({
         where: { id_user: id },
         select: {
@@ -199,10 +192,9 @@ exports.getMe = async (req, res) => {
         }
       });
 
-      // Normalisasi output
       if (user) {
-        user.nama = user.nama_user; // Alias
-        user.id = user.id_user;     // Alias
+        user.nama = user.nama_user;
+        user.id = user.id_user;
       }
     }
 
