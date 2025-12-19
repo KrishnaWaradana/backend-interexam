@@ -436,65 +436,79 @@ DELETE http://localhost:5000/api/v1/contributor/question/{{questionIdToDelete}}
 # Ganti dengan ID Paket yang ada di DB
 @idPaket = 1
 
-
 ### ==============================================
-### VARIABLE GLOBAL
+### 1. DASHBOARD: SIMULASI SEBAGAI "VALIDATOR"
 ### ==============================================
-@baseUrl = http://localhost:5000/api/v1
-# Ganti dengan ID Soal yang ingin dites
-@idSoal = 1
-# Ganti dengan ID Paket yang ada di DB
-@idPaket = 1
-
-
-### ==============================================
-### 1. SIMULASI SEBAGAI "VALIDATOR"
-### ==============================================
-# Backend akan mencari User Validator pertama.
-# HASIL: Soal difilter sesuai kompetensi (Misal: Biologi saja).
 GET {{baseUrl}}/bank-soal?as_role=validator
 Content-Type: application/json
 
 
 ### ==============================================
-### 2. SIMULASI SEBAGAI "ADMIN"
+### 2. DASHBOARD: SIMULASI SEBAGAI "ADMIN"
 ### ==============================================
-# Backend akan mencari User Admin pertama.
-# HASIL: Muncul SEMUA soal tanpa filter.
 GET {{baseUrl}}/bank-soal?as_role=admin
 Content-Type: application/json
 
 
 ### ==============================================
-### 3. GET DETAIL SOAL
+### 3. LIHAT DETAIL SOAL
 ### ==============================================
 GET {{baseUrl}}/bank-soal/{{idSoal}}
 Content-Type: application/json
 
 
 ### ==============================================
-### 4. DROPDOWN PAKET (UNTUK ADD TO PACKET)
+### 4. VALIDASI: SETUJUI SOAL (APPROVE)
 ### ==============================================
-GET {{baseUrl}}/bank-soal/lookup/packets
+# Sesuai Schema: Status harus "disetujui" (huruf kecil)
+PUT {{baseUrl}}/bank-soal/{{idSoal}}
 Content-Type: application/json
 
+{
+    "status": "disetujui"
+}
+
+
+### ==============================================
+### 5. VALIDASI: TOLAK SOAL (REJECT + CATATAN)
+### ==============================================
+# Sesuai Schema: Status harus "ditolak" (huruf kecil)
+PUT {{baseUrl}}/bank-soal/{{idSoal}}
+Content-Type: application/json
+
+{
+    "status": "ditolak",
+    "catatan_revisi": "Gambar soal terlalu buram dan opsi jawaban A ambigu. Mohon diperbaiki."
+}
+
+
+### ==============================================
+### 6. KEMBALIKAN KE STATUS VERIFIKASI (RESET)
+### ==============================================
+# Jika ingin mengetes ulang, kembalikan statusnya
+PUT {{baseUrl}}/bank-soal/{{idSoal}}
+Content-Type: application/json
+
+{
+    "status": "need_verification"
+}
+
 
 # ### ==============================================
-# ### 5. EDIT SOAL + MASUKKAN KE PAKET
+# ### 7. EDIT SOAL & MASUKKAN KE PAKET (OPSIONAL)
 # ### ==============================================
-# # Contoh edit text soal dan memasukkannya ke Paket Soal ID 1
 # PUT {{baseUrl}}/bank-soal/{{idSoal}}
 # Content-Type: application/json
 
 # {
-#     "text_soal": "Soal ini sudah direvisi oleh Admin/Validator",
+#     "text_soal": "Soal ini sudah diedit oleh Validator (V2)",
+#     "level_kesulitan": "sulit",
 #     "id_paket_soal": {{idPaket}}
 # }
 
 
 ### ==============================================
-### 6. DELETE SOAL
+### 8. HAPUS SOAL
 ### ==============================================
-# Hati-hati, data hilang permanen.
 DELETE {{baseUrl}}/bank-soal/{{idSoal}}
 Content-Type: application/json

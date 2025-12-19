@@ -7,33 +7,22 @@ const path = require('path');
 // ==========================================
 const getBankSoal = async (req, res) => {
     // Ambil parameter simulasi dari URL (default ke validator jika kosong)
-    // Contoh: ?as_role=admin ATAU ?as_role=validator
     const roleSimulation = req.query.as_role || 'validator'; 
 
     try {
-        let whereClause = {}; // Default kosong (untuk Admin = ambil semua)
-
-        // --- LOGIKA CARI USER OTOMATIS (MOCKING) ---
+        let whereClause = {}; 
         let mockUser = null;
 
+        // --- LOGIKA CARI USER OTOMATIS (MOCKING) ---
         if (roleSimulation.toLowerCase() === 'admin') {
-            // 1. Cari User Admin Pertama di Database
-            mockUser = await prisma.users.findFirst({
-                where: { role: 'Admin' }
-            });
-            // Jika Admin, whereClause tetap kosong (Show All)
-
+            mockUser = await prisma.users.findFirst({ where: { role: 'Admin' } });
         } else {
-            // 2. Cari User Validator Pertama di Database
-            mockUser = await prisma.users.findFirst({
-                where: { role: 'Validator' }
-            });
+            mockUser = await prisma.users.findFirst({ where: { role: 'Validator' } });
 
             if (!mockUser) {
-                return res.status(404).json({ message: "Tidak ada user Validator ditemukan di database untuk simulasi." });
+                return res.status(200).json({ status: 'success', data: [], message: "Validator tidak ditemukan." });
             }
 
-            // 3. Ambil Kompetensi Validator Tersebut
             const kompetensi = await prisma.kompetensiUser.findMany({
                 where: { id_user: mockUser.id_user },
                 select: { id_subject: true }
@@ -41,14 +30,11 @@ const getBankSoal = async (req, res) => {
 
             const subjectIds = kompetensi.map(k => k.id_subject);
 
-            // 4. Filter Soal Berdasarkan Kompetensi
             if (subjectIds.length > 0) {
                 whereClause = {
                     topic: { id_subjects: { in: subjectIds } }
                 };
             } else {
-                // Jika validator tidak punya kompetensi, jangan tampilkan apa-apa
-                // atau tampilkan kosong
                 return res.status(200).json({ 
                     status: 'success', 
                     data: [], 
@@ -63,22 +49,21 @@ const getBankSoal = async (req, res) => {
             orderBy: { id_soal: 'desc' },
             include: {
                 contributor: { select: { nama_user: true } },
-                topic: { 
-                    include: { 
-                        subject: { select: { nama_subject: true } } 
-                    } 
-                } 
+                topic: { include: { subject: { select: { nama_subject: true } } } },
+                attachments: true 
             }
         });
 
-        // Format Data untuk Frontend
+        // --- FORMAT DATA (UPDATE: TAMBAH TEXT SOAL & CATATAN) ---
         const formattedData = soalList.map((item) => ({
             id_soal: item.id_soal,
+            text_soal: item.text_soal,           // [BARU] Munculkan Teks Soal
             mata_pelajaran: item.topic?.subject?.nama_subject || '-',
             topik: item.topic?.nama_topik || '-',
             tipe_soal: item.jenis_soal,
             level_kesulitan: item.level_kesulitan,
-            status: item.status, // Disetujui/Need Verification
+            status: item.status, 
+            catatan_revisi: item.catatan_revisi, // [BARU] Munculkan Catatan Revisi
             contributor_name: item.contributor?.nama_user || 'Unknown',
             tanggal: item.tanggal_pembuatan
         }));
@@ -120,17 +105,22 @@ const getSoalDetail = async (req, res) => {
 };
 
 // ==========================================
-// 3. EDIT SOAL (UPDATE & PAKET)
+// 3. UPDATE SOAL (VALIDASI, EDIT, & PAKET)
 // ==========================================
 const updateSoal = async (req, res) => {
     const { id } = req.params;
-    const { id_paket_soal, text_soal, level_kesulitan, jenis_soal } = req.body;
+    
+    // Ambil SEMUA data yang mungkin dikirim frontend
+    const { 
+        id_paket_soal,                           // Untuk Add to Packet
+        text_soal, level_kesulitan, jenis_soal,  // Untuk Edit Konten
+        status, catatan_revisi                   // UNTUK VALIDASI (Approve/Reject)
+    } = req.body;
 
     try {
         await prisma.$transaction(async (tx) => {
-            let message = [];
-
-            // A. Option: Tambah ke Paket
+            
+            // 1. Logic Masukkan ke Paket
             if (id_paket_soal) {
                 const existing = await tx.soalPaketSoal.findFirst({
                     where: { id_soal: parseInt(id), id_paket_soal: parseInt(id_paket_soal) }
@@ -142,13 +132,20 @@ const updateSoal = async (req, res) => {
                 }
             }
 
-            // B. Option: Edit Fisik Soal
-            if (text_soal || level_kesulitan || jenis_soal) {
-                const updateData = {};
-                if (text_soal) updateData.text_soal = text_soal;
-                if (level_kesulitan) updateData.level_kesulitan = level_kesulitan;
-                if (jenis_soal) updateData.jenis_soal = jenis_soal;
+            // 2. Logic Update Soal (Termasuk Validasi)
+            const updateData = {};
 
+            // Validasi (Status & Catatan)
+            if (status) updateData.status = status;
+            if (catatan_revisi !== undefined) updateData.catatan_revisi = catatan_revisi;
+
+            // Edit Konten (Jika ada perubahan teks/tipe)
+            if (text_soal) updateData.text_soal = text_soal;
+            if (level_kesulitan) updateData.level_kesulitan = level_kesulitan;
+            if (jenis_soal) updateData.jenis_soal = jenis_soal;
+            
+            // Eksekusi Update jika ada data
+            if (Object.keys(updateData).length > 0) {
                 await tx.soal.update({
                     where: { id_soal: parseInt(id) },
                     data: updateData
@@ -156,9 +153,10 @@ const updateSoal = async (req, res) => {
             }
         });
 
-        res.status(200).json({ status: 'success', message: 'Update berhasil.' });
+        res.status(200).json({ status: 'success', message: 'Update/Validasi berhasil.' });
     } catch (error) {
-        res.status(500).json({ message: "Gagal update soal." });
+        console.error(error);
+        res.status(500).json({ message: "Gagal memproses update." });
     }
 };
 
