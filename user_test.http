@@ -428,51 +428,73 @@ DELETE http://localhost:5000/api/v1/contributor/question/{{questionIdToDelete}}
 
 
 ### ==============================================
-### 1. TEST DASHBOARD VALIDATOR
+### VARIABLE GLOBAL
 ### ==============================================
-# Ekspektasi: Muncul soal "Bakteri" tadi.
-# Jika kosong [], cek apakah hardcode ID di controller sudah sama dengan User Validator di database?
-GET {{baseUrl}}/validator/bank-soal
+@baseUrl = http://localhost:5000/api/v1
+# Ganti dengan ID Soal yang ingin dites (lihat hasil dashboard dulu)
+@idSoal = 1
+# Ganti dengan ID Paket yang ada di DB
+@idPaket = 1
+
+
+### ==============================================
+### VARIABLE GLOBAL
+### ==============================================
+@baseUrl = http://localhost:5000/api/v1
+# Ganti dengan ID Soal yang ingin dites
+@idSoal = 1
+# Ganti dengan ID Paket yang ada di DB
+@idPaket = 1
+
+
+### ==============================================
+### 1. SIMULASI SEBAGAI "VALIDATOR"
+### ==============================================
+# Backend akan mencari User Validator pertama.
+# HASIL: Soal difilter sesuai kompetensi (Misal: Biologi saja).
+GET {{baseUrl}}/bank-soal?as_role=validator
 Content-Type: application/json
 
 
 ### ==============================================
-### 2. TEST LIHAT DETAIL SOAL
+### 2. SIMULASI SEBAGAI "ADMIN"
 ### ==============================================
-# Ekspektasi: Muncul detail lengkap (Text soal, Subtopik 'Bakteri', dll)
-GET {{baseUrl}}/validator/bank-soal/{{idSoal}}
+# Backend akan mencari User Admin pertama.
+# HASIL: Muncul SEMUA soal tanpa filter.
+GET {{baseUrl}}/bank-soal?as_role=admin
 Content-Type: application/json
 
 
 ### ==============================================
-### 3. TEST VALIDASI: SETUJUI (APPROVE)
+### 3. GET DETAIL SOAL
 ### ==============================================
-# Ekspektasi: Status berubah jadi 'disetujui'
-PUT {{baseUrl}}/validator/bank-soal/2/validate
+GET {{baseUrl}}/bank-soal/{{idSoal}}
 Content-Type: application/json
 
-{
-    "status": "disetujui"
-}
-
 
 ### ==============================================
-### 4. TEST VALIDASI: TOLAK (REJECT)
+### 4. DROPDOWN PAKET (UNTUK ADD TO PACKET)
 ### ==============================================
-# Gunakan ini jika ingin mengetes alur penolakan (Revisi)
-# Ekspektasi: Status berubah jadi 'ditolak' & ada history keterangan
-PUT {{baseUrl}}/validator/bank-soal/{{idSoal}}/validate
+GET {{baseUrl}}/bank-soal/lookup/packets
 Content-Type: application/json
 
-{
-    "status": "ditolak",
-    "keterangan": "Soal terlalu mudah, tolong tambahkan opsi pengecoh."
-}
+
+# ### ==============================================
+# ### 5. EDIT SOAL + MASUKKAN KE PAKET
+# ### ==============================================
+# # Contoh edit text soal dan memasukkannya ke Paket Soal ID 1
+# PUT {{baseUrl}}/bank-soal/{{idSoal}}
+# Content-Type: application/json
+
+# {
+#     "text_soal": "Soal ini sudah direvisi oleh Admin/Validator",
+#     "id_paket_soal": {{idPaket}}
+# }
 
 
 ### ==============================================
-### 5. TEST ADMIN (GOD MODE)
+### 6. DELETE SOAL
 ### ==============================================
-# Admin bisa melihat semua soal tanpa peduli mapel
-GET {{baseUrl}}/admin/bank-soal
+# Hati-hati, data hilang permanen.
+DELETE {{baseUrl}}/bank-soal/{{idSoal}}
 Content-Type: application/json

@@ -15,10 +15,9 @@ const adminRoutes = require('./routes/adminRoutes');
 const topicRoutes = require('./routes/topicRoutes');
 const authRoutes = require('./routes/authRoutes');
 const jenjangRoutes = require('./routes/jenjangRoutes');
-const adminBankSoalRoutes = require('./routes/adminBankSoalRoutes');
 
 const soalRoutes = require('./routes/contributor/soalRoutes'); 
-const validatorBankSoalRoutes = require('./routes/validator/BankSoalRoutes');
+const bankSoalRoutes = require('./routes/BankSoalRoutes');
 
 // MIDDLEWARE WAJIB
 app.use(express.json()); // Parsing JSON body
@@ -44,13 +43,11 @@ app.use('/api/auth', authRoutes);
 // Jenjang Routes (Contoh: /api/v1/admin/jenjang/list)
 app.use('/api/v1/admin/jenjang', jenjangRoutes); 
 
-// Admin Bank Soal (Melihat Semua Soal)
-// Endpoint: http://localhost:5000/api/v1/admin/bank-soal
-app.use('/api/v1/admin/bank-soal', adminBankSoalRoutes);
-
-// Validator Bank Soal (Validasi Sesuai Kompetensi)
-// Endpoint: http://localhost:5000/api/v1/validator/bank-soal
-app.use('/api/v1/validator/bank-soal', validatorBankSoalRoutes);
+// E. BANK SOAL (UNIFIED ROUTE) 
+// Endpoint ini dipakai Admin & Validator.
+// -> Admin: GET /api/v1/bank-soal?as_role=admin
+// -> Validator: GET /api/v1/bank-soal?as_role=validator
+app.use('/api/v1/bank-soal', bankSoalRoutes);
 
 
 // Jalan untuk ambil data Jenjang & Subject
