@@ -410,7 +410,7 @@ Content-Type: application/json
 
 GET http://localhost:5000/api/v1/contributor/my-questions
 
-@questionIdToDelete = 26
+@questionIdToDelete = 70
 
 ### -----------------------------------------------------------
 ### 1. TEST DELETE (DELETE)
