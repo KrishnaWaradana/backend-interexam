@@ -12,10 +12,9 @@ const getBankSoal = async (req, res) => {
     try {
         let whereClause = {}; 
         let mockUser = null;
-
-        // --- LOGIKA CARI USER OTOMATIS (MOCKING) ---
         if (roleSimulation.toLowerCase() === 'admin') {
             mockUser = await prisma.users.findFirst({ where: { role: 'Admin' } });
+            whereClause.status = { not: 'draft' }; 
         } else {
             mockUser = await prisma.users.findFirst({ where: { role: 'Validator' } });
 
@@ -32,7 +31,8 @@ const getBankSoal = async (req, res) => {
 
             if (subjectIds.length > 0) {
                 whereClause = {
-                    topic: { id_subjects: { in: subjectIds } }
+                    topic: { id_subjects: { in: subjectIds } },
+                    status: { not: 'draft' } 
                 };
             } else {
                 return res.status(200).json({ 
@@ -43,7 +43,6 @@ const getBankSoal = async (req, res) => {
             }
         }
 
-        // --- QUERY UTAMA ---
         const soalList = await prisma.soal.findMany({
             where: whereClause,
             orderBy: { id_soal: 'desc' },
@@ -54,16 +53,15 @@ const getBankSoal = async (req, res) => {
             }
         });
 
-        // --- FORMAT DATA (UPDATE: TAMBAH TEXT SOAL & CATATAN) ---
         const formattedData = soalList.map((item) => ({
             id_soal: item.id_soal,
-            text_soal: item.text_soal,           // [BARU] Munculkan Teks Soal
+            text_soal: item.text_soal,
             mata_pelajaran: item.topic?.subject?.nama_subject || '-',
             topik: item.topic?.nama_topik || '-',
             tipe_soal: item.jenis_soal,
             level_kesulitan: item.level_kesulitan,
             status: item.status, 
-            catatan_revisi: item.catatan_revisi, // [BARU] Munculkan Catatan Revisi
+            catatan_revisi: item.catatan_revisi, 
             contributor_name: item.contributor?.nama_user || 'Unknown',
             tanggal: item.tanggal_pembuatan
         }));
@@ -110,17 +108,17 @@ const getSoalDetail = async (req, res) => {
 const updateSoal = async (req, res) => {
     const { id } = req.params;
     
-    // Ambil SEMUA data yang mungkin dikirim frontend
+    // Ambil Data Body
     const { 
-        id_paket_soal,                           // Untuk Add to Packet
-        text_soal, level_kesulitan, jenis_soal,  // Untuk Edit Konten
-        status, catatan_revisi                   // UNTUK VALIDASI (Approve/Reject)
+        id_paket_soal, 
+        text_soal, level_kesulitan, jenis_soal, 
+        status, catatan_revisi 
     } = req.body;
 
     try {
         await prisma.$transaction(async (tx) => {
             
-            // 1. Logic Masukkan ke Paket
+            // Logic Masukkan ke Paket
             if (id_paket_soal) {
                 const existing = await tx.soalPaketSoal.findFirst({
                     where: { id_soal: parseInt(id), id_paket_soal: parseInt(id_paket_soal) }
@@ -132,14 +130,19 @@ const updateSoal = async (req, res) => {
                 }
             }
 
-            // 2. Logic Update Soal (Termasuk Validasi)
+            // Logic Update Soal (Termasuk Validasi)
             const updateData = {};
 
-            // Validasi (Status & Catatan)
-            if (status) updateData.status = status;
+            if (status) {
+                if (status.toLowerCase() === 'disetujui') updateData.status = 'disetujui';
+                else if (status.toLowerCase() === 'ditolak') updateData.status = 'ditolak';
+                else if (status.toLowerCase() === 'need verification') updateData.status = 'need_verification';
+                else updateData.status = status; 
+            }
+
             if (catatan_revisi !== undefined) updateData.catatan_revisi = catatan_revisi;
 
-            // Edit Konten (Jika ada perubahan teks/tipe)
+            // Edit Konten
             if (text_soal) updateData.text_soal = text_soal;
             if (level_kesulitan) updateData.level_kesulitan = level_kesulitan;
             if (jenis_soal) updateData.jenis_soal = jenis_soal;
@@ -155,8 +158,8 @@ const updateSoal = async (req, res) => {
 
         res.status(200).json({ status: 'success', message: 'Update/Validasi berhasil.' });
     } catch (error) {
-        console.error(error);
-        res.status(500).json({ message: "Gagal memproses update." });
+        console.error("Error updateSoal:", error); 
+        res.status(500).json({ message: "Gagal memproses update: " + error.message });
     }
 };
 
