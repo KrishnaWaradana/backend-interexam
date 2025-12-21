@@ -48,7 +48,10 @@ const getBankSoal = async (req, res) => {
             orderBy: { id_soal: 'desc' },
             include: {
                 contributor: { select: { nama_user: true } },
-                topic: { include: { subject: { select: { nama_subject: true } } } },
+                topic: { 
+                    include: { subject: { select: { nama_subject: true } },
+                    jenjang: { select: { nama_jenjang: true } }
+             } },
                 attachments: true 
             }
         });
@@ -57,7 +60,8 @@ const getBankSoal = async (req, res) => {
             id_soal: item.id_soal,
             text_soal: item.text_soal,
             mata_pelajaran: item.topic?.subject?.nama_subject || '-',
-            topik: item.topic?.nama_topik || '-',
+            jenjang: item.topic?.jenjang?.nama_jenjang || '-',
+            topik: item.topics?.nama_topik || '-',
             tipe_soal: item.jenis_soal,
             level_kesulitan: item.level_kesulitan,
             status: item.status, 
@@ -89,7 +93,7 @@ const getSoalDetail = async (req, res) => {
             where: { id_soal: parseInt(id) },
             include: {
                 contributor: { select: { nama_user: true } },
-                topic: { include: { subject: true } },
+                topic: { include: { subject: true, jenjang: true } },
                 jawaban: true,
                 attachments: true
             }
@@ -107,6 +111,8 @@ const getSoalDetail = async (req, res) => {
 // ==========================================
 const updateSoal = async (req, res) => {
     const { id } = req.params;
+
+    const validatorId = req.user?.id || req.user?.id_user;
     
     // Ambil Data Body
     const { 
@@ -132,6 +138,7 @@ const updateSoal = async (req, res) => {
 
             // Logic Update Soal (Termasuk Validasi)
             const updateData = {};
+            let newStatusEnum = null;
 
             if (status) {
                 if (status.toLowerCase() === 'disetujui') updateData.status = 'disetujui';
@@ -152,6 +159,18 @@ const updateSoal = async (req, res) => {
                 await tx.soal.update({
                     where: { id_soal: parseInt(id) },
                     data: updateData
+                });
+            }
+
+            if ((newStatusEnum === 'disetujui' || newStatusEnum === 'ditolak') && validatorId) {
+                await tx.validasiSoal.create({
+                    data: {
+                        id_soal: parseInt(id),
+                        id_validator: parseInt(validatorId), // ID User yang login
+                        status: newStatusEnum, // Menggunakan Enum Prisma
+                        tanggal_validasi: new Date(),
+                        keterangan: catatan_revisi || (newStatusEnum === 'disetujui' ? 'Soal disetujui' : 'Soal ditolak')
+                    }
                 });
             }
         });

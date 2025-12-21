@@ -213,6 +213,7 @@ const getQuestionsByContributor = async (req, res) => {
     try {
         const contributorId = await getContributorIdFromDB(); 
         
+        // --- 1. Hitung Statistik (Tetap Sama) ---
         const [totalSoal, totalVerified, totalDraft, totalRejected, totalNeed] = await Promise.all([
             prisma.soal.count({ where: { id_contributor: contributorId } }),
             prisma.soal.count({ where: { id_contributor: contributorId, status: StatusSoal.disetujui } }),
@@ -229,12 +230,24 @@ const getQuestionsByContributor = async (req, res) => {
             total_need_verification: totalNeed 
         };
 
+        // --- 2. Ambil Data Soal (QUERY DIPERBAIKI) ---
         const questions = await prisma.soal.findMany({
             where: { id_contributor: contributorId },
-            include: { topic: { select: { nama_topics: true } }, attachments: true, jawaban: true },
+            include: { 
+                // PERUBAHAN DISINI: Ambil Subject dan Jenjang dari Topic
+                topic: { 
+                    include: {
+                        subject: true, // Ambil info Mapel
+                        jenjang: true  // Ambil info Jenjang
+                    }
+                }, 
+                attachments: true, 
+                jawaban: true 
+            },
             orderBy: { tanggal_pembuatan: 'desc' }
         });
 
+        // --- 3. Format Data (MAPPING DIPERBAIKI) ---
         const formattedQuestions = questions.map(q => {
             const imgSoal = q.attachments.find(a => a.keterangan === 'Gambar Soal');
             const imgPembahasan = q.attachments.find(a => a.keterangan === 'Gambar Pembahasan');
@@ -242,7 +255,12 @@ const getQuestionsByContributor = async (req, res) => {
             return {
                 id: q.id_soal,
                 nomor: q.id_soal, 
-                mata_pelajaran: q.topic ? q.topic.nama_topics : 'N/A', 
+                
+                // PERBAIKAN: Ambil nama dari relasi yang benar
+                mata_pelajaran: q.topic?.subject?.nama_subject || 'N/A', 
+                jenjang: q.topic?.jenjang?.nama_jenjang || '-', // <--- Field Baru untuk Frontend
+                topik: q.topic?.nama_topics || '-',
+
                 text_soal: q.text_soal,
                 tipe_soal: q.jenis_soal,
                 level_kesulitan: q.level_kesulitan,
