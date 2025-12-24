@@ -18,6 +18,7 @@ const jenjangRoutes = require('./routes/jenjangRoutes');
 
 const soalRoutes = require('./routes/contributor/soalRoutes'); 
 const bankSoalRoutes = require('./routes/BankSoalRoutes');
+const subTopicRoutes = require('./routes/subTopikRoutes');
 
 // MIDDLEWARE WAJIB
 app.use(express.json()); // Parsing JSON body
@@ -54,6 +55,8 @@ app.use('/api/v1/bank-soal', bankSoalRoutes);
 app.use('/api/v1/contributor/lookup', contributorLookupRoutes);
 // Ini akan membuat endpoint POST yang dicari menjadi: /api/v1/contributor/question
 app.use('/api/v1/contributor', soalRoutes); 
+
+app.use('/api/v1/subtopics', subTopicRoutes);
 
 
 

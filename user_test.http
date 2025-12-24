@@ -300,6 +300,7 @@ Content-Type: application/json
   "text_soal": "Soal Sukses Debug DB ID: {{uniqueId}}",
   "id_mata_pelajaran": "{{subjectIdYangAdaValidatornya}}",
   "id_topik": "1",
+  "id_subtopik": "1",
   "level_kesulitan": "sedang",
   "pembahasan_umum": "Pengujian mode debug database.",
   "action_type": "Ajukan", 
@@ -319,6 +320,7 @@ Content-Type: application/json
   "text_soal": "Soal Draft Debug DB ID: {{uniqueId}}-Draft",
   "id_mata_pelajaran": "{{subjectIdYangAdaValidatornya}}",
   "id_topik": "1",
+  "id_subtopik": "1",
   "level_kesulitan": "mudah",
   "pembahasan_umum": "Pengujian simpan draft.",
   "action_type": "Draft", 
@@ -344,6 +346,7 @@ Content-Type: application/json
   "text_soal": "Soal Sukses Debug DB ID: {{uniqueId}}",
   "id_mata_pelajaran": "{{subjectIdYangAdaValidatornya}}",
   "id_topik": "1",
+  "id_subtopik": "1",
   "level_kesulitan": "sedang",
   "pembahasan_umum": "Pengujian mode debug database.",
   "action_type": "Ajukan", 
@@ -511,4 +514,90 @@ Content-Type: application/json
 ### 8. HAPUS SOAL
 ### ==============================================
 DELETE {{baseUrl}}/bank-soal/{{idSoal}}
+Content-Type: application/json
+
+
+### ==============================================
+### VARIABLE GLOBAL
+### ==============================================
+@baseUrl = http://localhost:5000/api/v1
+
+# PENTING: Ganti angka '1' di bawah ini dengan ID Topik yang SUDAH ADA di database Anda.
+# Jika belum punya topik, buat dulu lewat endpoint Topik atau manual di DB.
+@idTopik = 1
+
+# Variable ID Subtopik (Akan dipakai untuk tes Get Detail, Update, Delete)
+# Ganti angka ini manual setelah Anda berhasil melakukan CREATE (Request No 1)
+@idSubTopik = 1
+
+
+### ==============================================
+### 1. BUAT SUB-TOPIK BARU (INCLUDE HTML DESC)
+### ==============================================
+# Controller akan otomatis mendeteksi User Lokal (Admin/User pertama) sebagai pembuatnya.
+POST {{baseUrl}}/subtopics
+Content-Type: application/json
+
+{
+    "nama_subtopics": "Struktur & Fungsi Sel",
+    "id_topics": {{idTopik}},
+    "keterangan": "Materi Dasar Biologi",
+    "deskripsi": "<div><h3>Pengenalan Sel</h3><p>Sel adalah unit struktural dan fungsional terkecil dari makhluk hidup.</p><ul><li><b>Prokariotik:</b> Tidak memiliki membran inti.</li><li><b>Eukariotik:</b> Memiliki membran inti.</li></ul></div>"
+}
+
+
+### ==============================================
+### 2. LIHAT SEMUA SUB-TOPIK
+### ==============================================
+# Menampilkan semua sub-topik tanpa filter
+GET {{baseUrl}}/subtopics
+Content-Type: application/json
+
+
+### ==============================================
+### 3. FILTER SUB-TOPIK BERDASARKAN TOPIK INDUK
+### ==============================================
+# Hanya menampilkan sub-topik milik Topik ID tertentu
+GET {{baseUrl}}/subtopics?id_topics={{idTopik}}
+Content-Type: application/json
+
+
+### ==============================================
+### 4. GET DETAIL SUB-TOPIK (PREVIEW MATERI)
+### ==============================================
+# Gunakan ini di Frontend untuk halaman Cover Paket Soal.
+# Response field 'deskripsi' berisi HTML yang siap di-render.
+GET {{baseUrl}}/subtopics/{{idSubTopik}}
+Content-Type: application/json
+
+
+### ==============================================
+### 5. UPDATE SUB-TOPIK
+### ==============================================
+# Mengubah nama atau isi materi (deskripsi)
+PUT {{baseUrl}}/subtopics/{{idSubTopik}}
+Content-Type: application/json
+
+{
+    "nama_subtopics": "Struktur Sel (Revisi)",
+    "deskripsi": "<div><h3>Revisi Materi</h3><p>Tambahan: Mitokondria berfungsi sebagai tempat respirasi sel untuk menghasilkan energi (ATP).</p></div>"
+}
+
+
+### ==============================================
+### 6. PINDAHKAN SUB-TOPIK KE TOPIK LAIN
+### ==============================================
+# Ganti id_topics dengan ID Topik tujuan baru
+PUT {{baseUrl}}/subtopics/{{idSubTopik}}
+Content-Type: application/json
+
+{
+    "id_topics": 2
+}
+
+
+### ==============================================
+### 7. HAPUS SUB-TOPIK
+### ==============================================
+DELETE {{baseUrl}}/subtopics/{{idSubTopik}}
 Content-Type: application/json

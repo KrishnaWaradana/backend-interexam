@@ -208,6 +208,7 @@ model SubTopics {
   id_subtopics    Int               @id @default(autoincrement())
   nama_subtopics  String?           @db.VarChar(45)
   keterangan      String?           @db.VarChar(45)
+  deskripsi       String?           @db.Text
   id_topics       Int
   topic           Topics            @relation(fields: [id_topics], references: [id_topics])
   detailSubTopics DetailSubTopics[]

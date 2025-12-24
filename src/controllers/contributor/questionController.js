@@ -94,7 +94,7 @@ const addQuestion = async (req, res) => {
 
     try {
         const { 
-            tipe_soal, text_soal, id_topik, level_kesulitan, 
+            tipe_soal, text_soal, id_topik,id_subtopik, level_kesulitan, 
             pembahasan_umum, opsi_jawaban, action_type, 
             old_image_soal, old_image_pembahasan 
         } = req.body;
@@ -113,6 +113,10 @@ const addQuestion = async (req, res) => {
                 text_soal, jenis_soal: jenis, level_kesulitan, status: statusSoal,
                 contributor: { connect: { id_user: contributorId } },
                 topic: { connect: { id_topics: parseInt(id_topik) } }, 
+                subTopic: id_subtopik && id_subtopik !== "null" 
+            ? { connect: { id_subtopics: parseInt(id_subtopik) } } 
+            : undefined
+    
             }
         });
         
@@ -241,6 +245,7 @@ const getQuestionsByContributor = async (req, res) => {
                         jenjang: true  // Ambil info Jenjang
                     }
                 }, 
+                subTopic: true,
                 attachments: true, 
                 jawaban: true 
             },
@@ -260,6 +265,8 @@ const getQuestionsByContributor = async (req, res) => {
                 mata_pelajaran: q.topic?.subject?.nama_subject || 'N/A', 
                 jenjang: q.topic?.jenjang?.nama_jenjang || '-', // <--- Field Baru untuk Frontend
                 topik: q.topic?.nama_topics || '-',
+                sub_topik: q.subTopic?.nama_subtopics || '-',
+                id_subtopik: q.id_subtopics,
 
                 text_soal: q.text_soal,
                 tipe_soal: q.jenis_soal,
@@ -340,7 +347,8 @@ const editQuestion = async (req, res) => {
             where: { id_soal: questionId },
             data: { 
                 text_soal, level_kesulitan, status: statusSoal, jenis_soal: jenis, 
-                id_topics: parseInt(id_topik) 
+                id_topics: parseInt(id_topik),
+                id_subtopics: id_subtopik && id_subtopik !== "null" ? parseInt(id_subtopik) : null
             }
         });
 
@@ -429,7 +437,9 @@ const getQuestionDetail = async (req, res) => {
                 topic: {
                     include: { subject: true, jenjang: true }
                 }
-            }
+            },
+            subTopic: true
+            
         });
 
         if (!soal) return res.status(404).json({ message: 'Soal tidak ditemukan.' });
@@ -450,12 +460,15 @@ const getQuestionDetail = async (req, res) => {
             id_topik: soal.id_topics,
             id_subject: soal.topic ? soal.topic.id_subjects : null,
             nama_subject: soal.topic?.subject?.nama_subject, 
+            id_subtopik: soal.id_subtopics,
+            nama_subtopik: soal.subTopic?.nama_subtopics || null,
             list_jawaban: soal.jawaban.map(j => ({
                 id: j.id_jawaban,
                 opsi_jawaban_text: j.opsi_jawaban_text,
                 status: j.status,
                 path_gambar_jawaban: j.path_gambar_jawaban
             }))
+            
         };
 
         res.status(200).json({ message: 'Berhasil', data: formattedData });

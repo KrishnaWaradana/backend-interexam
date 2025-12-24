@@ -52,6 +52,7 @@ const getBankSoal = async (req, res) => {
                     include: { subject: { select: { nama_subject: true } },
                     jenjang: { select: { nama_jenjang: true } }
              } },
+                subTopic: true,
                 attachments: true 
             }
         });
@@ -62,6 +63,8 @@ const getBankSoal = async (req, res) => {
             mata_pelajaran: item.topic?.subject?.nama_subject || '-',
             jenjang: item.topic?.jenjang?.nama_jenjang || '-',
             topik: item.topics?.nama_topik || '-',
+            sub_topik: item.subTopic?.nama_subtopics || '-',
+            id_subtopik: item.id_subtopics,
             tipe_soal: item.jenis_soal,
             level_kesulitan: item.level_kesulitan,
             status: item.status, 
@@ -95,7 +98,8 @@ const getSoalDetail = async (req, res) => {
                 contributor: { select: { nama_user: true } },
                 topic: { include: { subject: true, jenjang: true } },
                 jawaban: true,
-                attachments: true
+                attachments: true,
+                subTopic: true,
             }
         });
         
@@ -118,7 +122,8 @@ const updateSoal = async (req, res) => {
     const { 
         id_paket_soal, 
         text_soal, level_kesulitan, jenis_soal, 
-        status, catatan_revisi 
+        status, catatan_revisi,
+        id_subtopik 
     } = req.body;
 
     try {
@@ -153,7 +158,11 @@ const updateSoal = async (req, res) => {
             if (text_soal) updateData.text_soal = text_soal;
             if (level_kesulitan) updateData.level_kesulitan = level_kesulitan;
             if (jenis_soal) updateData.jenis_soal = jenis_soal;
-            
+            if (id_subtopik !== undefined) {
+            updateData.id_subtopics = (id_subtopik && id_subtopik !== "null") 
+                ? parseInt(id_subtopik) 
+                : null;
+             }
             // Eksekusi Update jika ada data
             if (Object.keys(updateData).length > 0) {
                 await tx.soal.update({
@@ -161,6 +170,7 @@ const updateSoal = async (req, res) => {
                     data: updateData
                 });
             }
+            
 
             if ((newStatusEnum === 'disetujui' || newStatusEnum === 'ditolak') && validatorId) {
                 await tx.validasiSoal.create({
