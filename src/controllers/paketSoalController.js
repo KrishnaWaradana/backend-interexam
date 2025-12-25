@@ -1,56 +1,89 @@
 const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 const fs = require('fs');
+const path = require('path');
 
-// --- 1. GET DATA UNTUK MODAL BANK SOAL ---
+// ==========================================
+// 1. GET BANK SOAL (Untuk Modal & Search)
+// ==========================================
 exports.getBankSoal = async (req, res) => {
     try {
-        const { subject_id, level, jenis_soal } = req.query;
-
-        // Build Filter
+        const { search, matapelajaran, jenjang, level, page = 1, limit = 10 } = req.query;
+        
+        // Setup Filter Awal: Hanya ambil soal yang sudah disetujui
         const whereClause = {
             status: 'disetujui' 
         };
 
-        if (level) whereClause.level_kesulitan = level;
-        if (jenis_soal) whereClause.jenis_soal = jenis_soal;
-        
-        // Filter by Subject agak tricky karena relasinya: Soal -> Topic -> Subject
-        if (subject_id) {
-            whereClause.topic = {
-                id_subjects: parseInt(subject_id)
-            };
+        // Filter Pencarian Text (Case Insensitive)
+        if (search) {
+            whereClause.text_soal = { contains: search, mode: 'insensitive' };
         }
 
-        const soalList = await prisma.soal.findMany({
-            where: whereClause,
-            select: {
-                id_soal: true,
-                text_soal: true,
-                jenis_soal: true,
-                level_kesulitan: true,
-                topic: {
-                    select: {
-                        subject: {
-                            select: { nama_subject: true }
+        // Filter Level Kesulitan
+        if (level && level !== 'all') {
+            whereClause.level_kesulitan = level.toLowerCase();
+        }
+
+        // Filter Relasi (Mapel & Jenjang via Topic)
+        // Kita cek jika user memfilter salah satu atau keduanya
+        if ((matapelajaran && matapelajaran !== 'all') || (jenjang && jenjang !== 'all')) {
+            whereClause.topic = {}; // Inisialisasi object topic relation
+
+            if (matapelajaran && matapelajaran !== 'all') {
+                whereClause.topic.subject = {
+                    nama_subject: matapelajaran // Pastikan nama di DB sama persis ("Matematika", dll)
+                };
+            }
+            
+            if (jenjang && jenjang !== 'all') {
+                whereClause.topic.jenjang = {
+                    nama_jenjang: jenjang // ("SMA", "SMP", dll)
+                };
+            }
+        }
+
+        // Pagination Logic
+        const skip = (parseInt(page) - 1) * parseInt(limit);
+
+        // Eksekusi Query (Transaction biar efisien)
+        const [soalList, total] = await prisma.$transaction([
+            prisma.soal.findMany({
+                where: whereClause,
+                include: {
+                    topic: {
+                        include: {
+                            subject: true, // Ambil nama mapel
+                            jenjang: true  // Ambil nama jenjang
                         }
                     }
-                }
-            },
-            orderBy: { id_soal: 'desc' }
-        });
+                },
+                skip: skip,
+                take: parseInt(limit),
+                orderBy: { id_soal: 'desc' }
+            }),
+            prisma.soal.count({ where: whereClause })
+        ]);
 
-        // Flatten data supaya frontend enak bacanya (ambil nama mapelnya)
-        const formattedData = soalList.map(soal => ({
-            id: soal.id_soal,
-            mapel: soal.topic?.subject?.nama_subject || '-',
-            soal: soal.text_soal.substring(0, 100) + '...', // Potong text biar gak kepanjangan
-            tipe: soal.jenis_soal,
-            level: soal.level_kesulitan,
-            status: 'Disetujui' // Hardcode karena emang filter disetujui
+        // Mapping Data agar sesuai kolom tabel Frontend
+        const formattedData = soalList.map(item => ({
+            id: item.id_soal,
+            nama_soal: item.text_soal,
+            matapelajaran: item.topic?.subject?.nama_subject || '-',
+            jenjang: item.topic?.jenjang?.nama_jenjang || '-',
+            tipe_soal: item.jenis_soal, // short_answer, multiple_choice, dll
+            level: item.level_kesulitan, // mudah, sedang, sulit
+            status: 'Disetujui' // Hardcode karena query di atas sudah filter 'disetujui'
         }));
 
-        res.status(200).json({ data: formattedData });
+        res.status(200).json({
+            data: formattedData,
+            meta: {
+                total,
+                page: parseInt(page),
+                last_page: Math.ceil(total / parseInt(limit))
+            }
+        });
 
     } catch (error) {
         console.error("Error getBankSoal:", error);
@@ -58,67 +91,94 @@ exports.getBankSoal = async (req, res) => {
     }
 };
 
-// --- 2. CREATE PAKET SOAL (TRANSACTION) ---
-// Ini dipanggil saat tombol "Simpan" diklik
+// ==========================================
+// 2. CREATE PAKET SOAL
+// ==========================================
 exports.createPaketSoal = async (req, res) => {
     /*
-      req.body akan berisi:
-      - nama_paket
-      - id_category (Kategori Paket)
-      - status (Active/Draft)
-      - soal_ids (Array ID Soal yang dipilih: "[1, 5, 10]") -> Dikirim sebagai String JSON kalau via FormData
+        REQ BODY (FormData) yang dikirim Frontend:
+        - nama_paket (String)
+        - deskripsi (String)
+        - jenis (String: "Gratis" | "Berbayar")
+        - status (String: "Active" | "Inactive" | "Draft")
+        - id_category (String angka: "1")
+        - soal_ids (String JSON: "[1, 5, 10]") -> ID Soal yang dipilih & diurutkan
+        - image (File Binary) -> Ditangkap oleh Multer sebagai req.file
     */
-    const { nama_paket, id_category, status, soal_ids } = req.body;
-    const imagePath = req.file ? req.file.path : null;
-    const creatorId = req.user.id; // Dari Token
-
-    // Parsing soal_ids karena FormData mengirim array sebagai string
-    let parsedSoalIds = [];
-    if (soal_ids) {
-        try {
-            parsedSoalIds = JSON.parse(soal_ids); // Contoh input: "[1, 2, 3]"
-        } catch (e) {
-            // Fallback kalau dikirim bukan JSON string tapi array biasa (tergantung library frontend)
-            parsedSoalIds = Array.isArray(soal_ids) ? soal_ids : [soal_ids];
-        }
-    }
+   
+    const file = req.file;
+    // Destructuring body
+    const { nama_paket, deskripsi, jenis, status, id_category, soal_ids } = req.body;
+    const id_creator = req.user.id; // Didapat dari Token Admin
 
     try {
+        // --- A. Validasi & Parsing Data ---
+
+        // 1. Parse soal_ids (Karena FormData mengirim array sebagai string)
+        let parsedSoalIds = [];
+        if (soal_ids) {
+            try {
+                parsedSoalIds = JSON.parse(soal_ids);
+            } catch (e) {
+                // Jika error parse, hapus gambar yang terlanjur diupload biar gak nyampah
+                if (file) fs.unlinkSync(file.path);
+                return res.status(400).json({ message: "Format soal_ids invalid (Harus JSON Array)." });
+            }
+        }
+
+        // 2. Mapping Frontend ke Enum Database
+        // Frontend kirim "Gratis" -> DB butuh "latihan"
+        // Frontend kirim "Berbayar" -> DB butuh "try_out" (sesuai map schema kamu)
+        let jenisDb = 'latihan'; 
+        if (jenis === 'Berbayar') jenisDb = 'try_out';
+
+        // Frontend kirim "Active" -> DB butuh "active" (lowercase)
+        let statusDb = status ? status.toLowerCase() : 'draft';
+
+        // 3. Pastikan ID Category angka
+        const categoryInt = parseInt(id_category);
+        if (isNaN(categoryInt)) {
+            if (file) fs.unlinkSync(file.path);
+            return res.status(400).json({ message: "ID Category harus berupa angka." });
+        }
+
+        // --- B. Simpan ke Database (Transaction) ---
+        // Kita pakai Transaction supaya kalau simpan soal gagal, simpan paket juga dibatalkan
         const result = await prisma.$transaction(async (tx) => {
-            // 1. Hitung Durasi Total (Opsional: ambil sum durasi dari masing-masing soal jika ada datanya)
-            // Untuk MVP, kita set manual atau 0 dulu.
             
-            // 2. Buat Paket Soal Header
+            // 1. Buat Header Paket Soal
             const newPaket = await tx.paketSoal.create({
                 data: {
                     nama_paket,
-                    id_category: parseInt(id_category),
-                    status: status || 'draft',
-                    image: imagePath,
-                    id_creator: creatorId,
+                    deskripsi, // ✅ FIELD BARU SUDAH MASUK SINI
+                    jenis: jenisDb,
+                    status: statusDb,
+                    image: file ? file.path : null, // Path file dari Multer
                     jumlah_soal: parsedSoalIds.length,
-                    tanggal_dibuat: new Date()
+                    id_category: categoryInt,
+                    id_creator: id_creator,
+                    tanggal_dibuat: new Date() // Sesuai schema DateTime
                 }
             });
 
-            // 3. Masukkan Soal-soal ke Junction Table (soal_paket_soal)
+            // 2. Simpan Detail Soal (Junction Table)
+            // Loop array ID soal untuk dimasukkan ke tabel soal_paket_soal
             if (parsedSoalIds.length > 0) {
-                // Siapkan data bulk insert
-                const junctionData = parsedSoalIds.map(idSoal => ({
+                const soalPaketData = parsedSoalIds.map((soalId) => ({
                     id_paket_soal: newPaket.id_paket_soal,
-                    id_soal: parseInt(idSoal),
-                    point: 1, // Default point, bisa diubah nanti
-                    durasi: 0 // Default durasi per soal
+                    id_soal: parseInt(soalId),
+                    point: 100 / parsedSoalIds.length, 
                 }));
 
                 await tx.soalPaketSoal.createMany({
-                    data: junctionData
+                    data: soalPaketData
                 });
             }
 
             return newPaket;
         });
 
+        // --- C. Response Sukses ---
         res.status(201).json({ 
             message: "Paket soal berhasil dibuat!", 
             data: result 
@@ -126,223 +186,15 @@ exports.createPaketSoal = async (req, res) => {
 
     } catch (error) {
         console.error("Error createPaketSoal:", error);
-        // Hapus gambar jika transaksi database gagal (biar gak nyampah)
-        if (imagePath && fs.existsSync(imagePath)) {
-            fs.unlinkSync(imagePath);
-        }
-        res.status(500).json({ message: "Gagal membuat paket soal.", error: error.message });
-    }
-};
-
-// --- 3. GET LIST PAKET SOAL (Untuk Dashboard Paket Soal) ---
-exports.getAllPaket = async (req, res) => {
-    try {
-        const paket = await prisma.paketSoal.findMany({
-            include: {
-                category: true, // Ambil nama kategori
-                _count: {
-                    select: { soalPaket: true } // Hitung jumlah soal real
-                }
-            },
-            orderBy: { id_paket_soal: 'desc' }
-        });
         
-        res.status(200).json({ data: paket });
-    } catch (error) {
-        res.status(500).json({ message: "Gagal ambil paket soal." });
-    }
-};
-
-// --- 4. GET DETAIL PAKET (Read One) ---
-// Dipanggil saat Admin klik tombol "Edit" (icon pensil) atau "View" (icon mata)
-exports.getPaketById = async (req, res) => {
-    const { id } = req.params;
-    try {
-        const paket = await prisma.paketSoal.findUnique({
-            where: { id_paket_soal: parseInt(id) },
-            include: {
-                category: true,
-                // Ambil daftar soal yang ada di paket ini
-                soalPaket: {
-                    include: {
-                        soal: {
-                            select: {
-                                id_soal: true,
-                                text_soal: true,
-                                jenis_soal: true,
-                                level_kesulitan: true
-                            }
-                        }
-                    }
-                }
-            }
-        });
-
-        if (!paket) return res.status(404).json({ message: "Paket soal tidak ditemukan." });
-
-        // Format ulang data soal biar frontend gampang bacanya
-        // Mengubah struktur dari "Junction Table" ke "Array of Soal"
-        const formattedPaket = {
-            ...paket,
-            list_soal: paket.soalPaket.map(item => ({
-                id: item.soal.id_soal,
-                text: item.soal.text_soal,
-                jenis: item.soal.jenis_soal,
-                level: item.soal.level_kesulitan
-            }))
-        };
-
-        res.status(200).json({ data: formattedPaket });
-    } catch (error) {
-        console.error(error);
-        res.status(500).json({ message: "Gagal mengambil detail paket." });
-    }
-};
-
-// --- 5. UPDATE PAKET SOAL (Edit) ---
-exports.updatePaketSoal = async (req, res) => {
-    const { id } = req.params;
-    /*
-      Body sama seperti Create: 
-      nama_paket, id_category, status, soal_ids (JSON String)
-    */
-    const { nama_paket, id_category, status, soal_ids } = req.body;
-    const newImage = req.file ? req.file.path : null;
-
-    try {
-        // Cek dulu paket lama untuk ambil info gambar lama
-        const oldPaket = await prisma.paketSoal.findUnique({ where: { id_paket_soal: parseInt(id) } });
-        if (!oldPaket) {
-            if (newImage && fs.existsSync(newImage)) fs.unlinkSync(newImage); // Hapus gambar baru klo gagal
-            return res.status(404).json({ message: "Paket tidak ditemukan." });
+        // PENTING: Hapus file gambar jika database gagal simpan (Rollback manual file)
+        if (file && fs.existsSync(file.path)) {
+            fs.unlinkSync(file.path);
         }
 
-        const result = await prisma.$transaction(async (tx) => {
-            // A. Update Data Header
-            const updateData = {
-                nama_paket,
-                id_category: id_category ? parseInt(id_category) : undefined,
-                status,
-                // Jika ada gambar baru, pakai yg baru. Jika tidak, tetap yg lama.
-                image: newImage || oldPaket.image 
-            };
-            
-            // Logic Hapus Gambar Lama
-            if (newImage && oldPaket.image && fs.existsSync(oldPaket.image)) {
-                fs.unlinkSync(oldPaket.image);
-            }
-
-            // B. Update Relasi Soal (HANYA JIKA soal_ids DIKIRIM)
-            // Caranya: Hapus semua relasi lama -> Buat relasi baru (Reset)
-            let totalSoal = oldPaket.jumlah_soal; // Default pakai lama
-
-            if (soal_ids) {
-                // 1. Parsing Input
-                let parsedSoalIds = [];
-                try {
-                    parsedSoalIds = JSON.parse(soal_ids);
-                } catch (e) {
-                    parsedSoalIds = Array.isArray(soal_ids) ? soal_ids : [soal_ids];
-                }
-
-                // 2. Hapus relasi lama di tabel junction
-                await tx.soalPaketSoal.deleteMany({
-                    where: { id_paket_soal: parseInt(id) }
-                });
-
-                // 3. Masukkan relasi baru
-                if (parsedSoalIds.length > 0) {
-                    const junctionData = parsedSoalIds.map(idSoal => ({
-                        id_paket_soal: parseInt(id),
-                        id_soal: parseInt(idSoal),
-                        point: 1, 
-                        durasi: 0
-                    }));
-                    await tx.soalPaketSoal.createMany({ data: junctionData });
-                }
-                
-                // Update jumlah soal di header
-                updateData.jumlah_soal = parsedSoalIds.length;
-            }
-
-            // Eksekusi Update Header
-            const updatedPaket = await tx.paketSoal.update({
-                where: { id_paket_soal: parseInt(id) },
-                data: updateData
-            });
-
-            return updatedPaket;
+        res.status(500).json({ 
+            message: "Gagal membuat paket soal.", 
+            error: error.message 
         });
-
-        res.status(200).json({ message: "Paket soal berhasil diupdate.", data: result });
-
-    } catch (error) {
-        console.error(error);
-        if (newImage && fs.existsSync(newImage)) fs.unlinkSync(newImage);
-        res.status(500).json({ message: "Gagal update paket." });
-    }
-};
-
-// --- 6. DELETE PAKET SOAL ---
-exports.deletePaketSoal = async (req, res) => {
-    const { id } = req.params;
-
-    try {
-        // Cek paket untuk hapus gambar
-        const paket = await prisma.paketSoal.findUnique({ where: { id_paket_soal: parseInt(id) } });
-        if (!paket) return res.status(404).json({ message: "Paket tidak ditemukan." });
-
-        await prisma.$transaction(async (tx) => {
-            // 1. Hapus Relasi di Junction Table dulu (soal_paket_soal)
-            await tx.soalPaketSoal.deleteMany({
-                where: { id_paket_soal: parseInt(id) }
-            });
-
-            // 2. Hapus History Pengerjaan / Attempt jika ada (PENTING biar ga error constraint)
-            await tx.paketAttempt.deleteMany({
-                 where: { paket_soal_id_paket_soal: parseInt(id) }
-            });
-
-            // 3. Hapus Paket Utama
-            await tx.paketSoal.delete({
-                where: { id_paket_soal: parseInt(id) }
-            });
-        });
-
-        // 4. Hapus File Gambar dari folder
-        if (paket.image && fs.existsSync(paket.image)) {
-            fs.unlinkSync(paket.image);
-        }
-
-        res.status(200).json({ message: "Paket soal berhasil dihapus." });
-
-    } catch (error) {
-        console.error(error);
-        res.status(500).json({ message: "Gagal menghapus paket soal. Mungkin paket ini sudah pernah dikerjakan siswa." });
-    }
-};
-
-// --- 7. UPDATE STATUS ONLY (Toggle Switch di Dashboard) ---
-exports.updateStatusPaket = async (req, res) => {
-    const { id } = req.params;
-    const { status } = req.body; // active, inactive, draft
-
-    try {
-        // Validasi Enum
-        const validStatus = ['active', 'inactive', 'draft'];
-        if (!validStatus.includes(status)) {
-            return res.status(400).json({ message: "Status tidak valid. Gunakan: active, inactive, atau draft." });
-        }
-
-        const updated = await prisma.paketSoal.update({
-            where: { id_paket_soal: parseInt(id) },
-            data: { status: status }
-        });
-
-        res.status(200).json({ message: `Status paket berhasil diubah jadi ${status}.`, data: updated });
-
-    } catch (error) {
-        console.error(error);
-        res.status(500).json({ message: "Gagal update status." });
     }
 };

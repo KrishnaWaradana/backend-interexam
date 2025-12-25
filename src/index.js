@@ -15,7 +15,7 @@ const adminRoutes = require('./routes/adminRoutes');
 const topicRoutes = require('./routes/topicRoutes');
 const authRoutes = require('./routes/authRoutes');
 const jenjangRoutes = require('./routes/jenjangRoutes');
-
+const paketSoalRoutes = require('./routes/paketSoalRoutes');
 const soalRoutes = require('./routes/contributor/soalRoutes'); 
 const bankSoalRoutes = require('./routes/BankSoalRoutes');
 const subTopicRoutes = require('./routes/subTopikRoutes');
@@ -40,6 +40,8 @@ app.use('/api/v1/topics', topicRoutes);
 
 // Auth Routes (Contoh: /api/auth/google)
 app.use('/api/auth', authRoutes);
+
+app.use('/api/admin/paket-soal', paketSoalRoutes);
 
 // Jenjang Routes (Contoh: /api/v1/admin/jenjang/list)
 app.use('/api/v1/admin/jenjang', jenjangRoutes); 
