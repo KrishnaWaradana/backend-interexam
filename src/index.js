@@ -19,6 +19,7 @@ const paketSoalRoutes = require('./routes/paketSoalRoutes');
 const soalRoutes = require('./routes/contributor/soalRoutes'); 
 const bankSoalRoutes = require('./routes/BankSoalRoutes');
 const subTopicRoutes = require('./routes/subTopikRoutes');
+const categoryRoutes = require('./routes/categoryRoutes');
 
 // MIDDLEWARE WAJIB
 app.use(express.json()); // Parsing JSON body
@@ -43,6 +44,7 @@ app.use('/api/auth', authRoutes);
 
 app.use('/api/admin/paket-soal', paketSoalRoutes);
 
+app.use('/api/categories', categoryRoutes);
 // Jenjang Routes (Contoh: /api/v1/admin/jenjang/list)
 app.use('/api/v1/admin/jenjang', jenjangRoutes); 
 
