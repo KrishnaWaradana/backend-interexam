@@ -42,9 +42,9 @@ app.use('/api/v1/topics', topicRoutes);
 // Auth Routes (Contoh: /api/auth/google)
 app.use('/api/auth', authRoutes);
 
-app.use('/api/admin/paket-soal', paketSoalRoutes);
+app.use('/api/v1/admin/paket-soal', paketSoalRoutes);
 
-app.use('/api/categories', categoryRoutes);
+app.use('/api/v1/categories', categoryRoutes);
 // Jenjang Routes (Contoh: /api/v1/admin/jenjang/list)
 app.use('/api/v1/admin/jenjang', jenjangRoutes); 
 

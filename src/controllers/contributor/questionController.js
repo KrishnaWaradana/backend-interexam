@@ -436,9 +436,9 @@ const getQuestionDetail = async (req, res) => {
                 jawaban: { orderBy: { id_jawaban: 'asc' } },
                 topic: {
                     include: { subject: true, jenjang: true }
-                }
-            },
-            subTopic: true
+                },
+                subTopic: true
+            }
             
         });
 
