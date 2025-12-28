@@ -1,0 +1,44 @@
+### ==============================================
+### TEST MANAJEMEN KATEGORI (NO TOKEN)
+### ==============================================
+@baseUrl = http://localhost:5000/api/categories
+
+### 1. CEK SEMUA KATEGORI (GET)
+# Harusnya muncul list kategori yg ada di DB
+GET {{baseUrl}}
+Content-Type: application/json
+
+### 2. TAMBAH KATEGORI BARU (POST)
+# Coba create kategori "Latihan Umum"
+POST {{baseUrl}}
+Content-Type: application/json
+
+{
+    "nama_category": "Latihan Umum",
+    "keterangan": "Soal-soal latihan harian"
+}
+
+### 3. TAMBAH KATEGORI LAGI (POST)
+# Coba create kategori "Try Out Akbar"
+POST {{baseUrl}}
+Content-Type: application/json
+
+{
+    "nama_category": "Try Out Akbar",
+    "keterangan": "Persiapan ujian nasional"
+}
+
+### 4. UPDATE KATEGORI (PUT)
+# Ganti angka 1 dengan ID kategori yang baru kamu buat tadi
+PUT {{baseUrl}}/1
+Content-Type: application/json
+
+{
+    "nama_category": "Latihan Harian (Revisi)",
+    "keterangan": "Keterangan sudah diubah"
+}
+
+### 5. HAPUS KATEGORI (DELETE)
+# Ganti angka 1 dengan ID kategori yang mau dihapus
+DELETE {{baseUrl}}/1
+Content-Type: application/json

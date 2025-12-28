@@ -10,16 +10,16 @@ global.__basedir = __dirname;
 
 const prisma = require('./config/prismaClient'); 
 
-// ⬇️ IMPORT SEMUA ROUTES ⬇️
+const contributorLookupRoutes = require('./routes/contributor/lookupRoutes');
 const adminRoutes = require('./routes/adminRoutes'); 
 const topicRoutes = require('./routes/topicRoutes');
 const authRoutes = require('./routes/authRoutes');
 const jenjangRoutes = require('./routes/jenjangRoutes');
-const adminBankSoalRoutes = require('./routes/adminBankSoalRoutes');
-
-// 💡 Ini adalah file routes yang Anda buat (src/routes/contributor/soalRoutes.js)
+const paketSoalRoutes = require('./routes/paketSoalRoutes');
 const soalRoutes = require('./routes/contributor/soalRoutes'); 
-const validatorBankSoalRoutes = require('./routes/validator/BankSoalRoutes');
+const bankSoalRoutes = require('./routes/BankSoalRoutes');
+const subTopicRoutes = require('./routes/subTopikRoutes');
+const categoryRoutes = require('./routes/categoryRoutes');
 
 // MIDDLEWARE WAJIB
 app.use(express.json()); // Parsing JSON body
@@ -31,7 +31,7 @@ app.use(cors({
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
 
-// ⬇️ DAFTAR ROUTE UTAMA (PREFIXING) ⬇️
+//  DAFTAR ROUTE UTAMA (PREFIXING) 
 
 // Admin Routes (Contoh: /api/v1/admin/users)
 app.use('/api/v1', adminRoutes); 
@@ -42,21 +42,26 @@ app.use('/api/v1/topics', topicRoutes);
 // Auth Routes (Contoh: /api/auth/google)
 app.use('/api/auth', authRoutes);
 
+app.use('/api/v1/admin/paket-soal', paketSoalRoutes);
+
+app.use('/api/v1/categories', categoryRoutes);
 // Jenjang Routes (Contoh: /api/v1/admin/jenjang/list)
 app.use('/api/v1/admin/jenjang', jenjangRoutes); 
 
-// Admin Bank Soal (Melihat Semua Soal)
-// Endpoint: http://localhost:5000/api/v1/admin/bank-soal
-app.use('/api/v1/admin/bank-soal', adminBankSoalRoutes);
-
-// Validator Bank Soal (Validasi Sesuai Kompetensi)
-// Endpoint: http://localhost:5000/api/v1/validator/bank-soal
-app.use('/api/v1/validator/bank-soal', validatorBankSoalRoutes);
+// E. BANK SOAL (UNIFIED ROUTE) 
+// Endpoint ini dipakai Admin & Validator.
+// -> Admin: GET /api/v1/bank-soal?as_role=admin
+// -> Validator: GET /api/v1/bank-soal?as_role=validator
+app.use('/api/v1/bank-soal', bankSoalRoutes);
 
 
-// 🚀 KOREKSI UTAMA: ROUTE CONTRIBUTOR/SOAL
+// Jalan untuk ambil data Jenjang & Subject
+app.use('/api/v1/contributor/lookup', contributorLookupRoutes);
 // Ini akan membuat endpoint POST yang dicari menjadi: /api/v1/contributor/question
 app.use('/api/v1/contributor', soalRoutes); 
+
+app.use('/api/v1/subtopics', subTopicRoutes);
+
 
 
 const PORT = 5000;
