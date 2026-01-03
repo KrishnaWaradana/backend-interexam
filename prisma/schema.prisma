@@ -297,6 +297,7 @@ model Subscribers {
   email_subscriber    String?               @unique @db.VarChar(45)
   googleId            String?               @unique @db.VarChar(255)
   phone               String?               @unique @db.VarChar(45)
+  foto                String?               @db.VarChar(255) 
   reports             Reports[]
   favorites           Favorites[]
   subscribePaket      SubscribePaket[]
