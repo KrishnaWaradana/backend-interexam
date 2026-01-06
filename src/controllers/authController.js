@@ -28,6 +28,21 @@ exports.googleLogin = async (req, res) => {
     // LOGIC A: SUBSCRIBER (Siswa/User Umum)
     // ------------------------------------------
     if (roleTarget === 'subscriber') {
+      
+      // Cross VALIDASI 1: Cek di tabel Users (Internal) dulu
+      // Mencegah akun Staff login/daftar sebagai Siswa
+      const isInternal = await prisma.users.findFirst({
+        where: { email_user: email }
+      });
+
+      if (isInternal) {
+        return res.status(400).json({ 
+          message: "Email ini terdaftar sebagai Staff/Admin. Gunakan menu login Contributor/Validator." 
+        });
+      }
+
+      // --- Lanjut Logic Subscriber ---
+      
       // Cek apakah subscriber sudah ada?
       user = await prisma.subscribers.findFirst({
         where: { OR: [{ googleId: googleId }, { email_subscriber: email }] }
@@ -40,8 +55,7 @@ exports.googleLogin = async (req, res) => {
             email_subscriber: email,
             nama_subscriber: name,
             googleId: googleId,
-            foto: picture // Simpan foto google jika ada kolomnya
-            // status tidak dimasukkan karena ikut logika paket langganan
+            foto: picture 
           }
         });
       } else {
@@ -62,6 +76,19 @@ exports.googleLogin = async (req, res) => {
     // LOGIC B: INTERNAL (Admin/Validator/Contributor)
     // ------------------------------------------
     else {
+
+      // Cross VALIDASI 2: Cek di tabel Subscribers (Siswa) dulu
+      // Mencegah akun Siswa login/daftar sebagai Staff
+      const isSubscriber = await prisma.subscribers.findFirst({
+        where: { email_subscriber: email }
+      });
+
+      if (isSubscriber) {
+        return res.status(400).json({ 
+          message: "Email ini terdaftar sebagai Siswa. Gunakan menu login Siswa." 
+        });
+      }
+
       // Cek apakah user internal sudah ada?
       user = await prisma.users.findFirst({
         where: { OR: [{ googleId: googleId }, { email_user: email }] }
@@ -84,7 +111,7 @@ exports.googleLogin = async (req, res) => {
               googleId: googleId,
               role: requestRole,
               foto: picture,
-              status: 'Unverified' // <--- Tahan dulu
+              status: 'Unverified'
             }
           });
 
