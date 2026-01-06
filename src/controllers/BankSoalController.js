@@ -52,7 +52,7 @@ const getBankSoal = async (req, res) => {
                     include: { subject: { select: { nama_subject: true } },
                     jenjang: { select: { nama_jenjang: true } }
              } },
-                subTopic: true,
+                // subTopic: true,
                 attachments: true 
             }
         });
@@ -63,9 +63,9 @@ const getBankSoal = async (req, res) => {
             mata_pelajaran: item.topic?.subject?.nama_subject || '-',
             jenjang: item.topic?.jenjang?.nama_jenjang || '-',
             topik: item.topics?.nama_topik || '-',
-             sub_topik: item.subTopic?.nama_subtopics || '-',
-             id_subtopik: item.id_subtopics,
-             deskripsi_subtopik: item.subTopic?.deskripsi || '',
+            //  sub_topik: item.subTopic?.nama_subtopics || '-',
+            //  id_subtopik: item.id_subtopics,
+            //  deskripsi_subtopik: item.subTopic?.deskripsi || '',
             tipe_soal: item.jenis_soal,
             level_kesulitan: item.level_kesulitan,
             status: item.status, 
@@ -100,7 +100,7 @@ const getSoalDetail = async (req, res) => {
                 topic: { include: { subject: true, jenjang: true } },
                 jawaban: true,
                 attachments: true,
-                subTopic: true,
+                // subTopic: true,
             }
         });
         
@@ -160,9 +160,9 @@ const updateSoal = async (req, res) => {
             if (level_kesulitan) updateData.level_kesulitan = level_kesulitan;
             if (jenis_soal) updateData.jenis_soal = jenis_soal;
             if (id_subtopik !== undefined) {
-            updateData.id_subtopics = (id_subtopik && id_subtopik !== "null") 
-                ? parseInt(id_subtopik) 
-                : null;
+            // updateData.id_subtopics = (id_subtopik && id_subtopik !== "null") 
+            //     ? parseInt(id_subtopik) 
+            //     : null;
              }
             // Eksekusi Update jika ada data
             if (Object.keys(updateData).length > 0) {

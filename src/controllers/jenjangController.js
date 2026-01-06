@@ -4,6 +4,7 @@ const jenjangController = {
   // --- 1. CREATE JENJANG ---
   createJenjang: async (req, res) => {
     const { nama_jenjang, keterangan } = req.body;
+    const userId = req.user.id;
 
     try {
       // 1. Validasi Input Wajib
@@ -26,7 +27,8 @@ const jenjangController = {
       const newJenjang = await prisma.jenjang.create({
         data: {
           nama_jenjang,
-          keterangan: keterangan || ""
+          keterangan: keterangan || "",
+          id_user: userId
         }
       });
 

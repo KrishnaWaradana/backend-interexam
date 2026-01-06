@@ -6,7 +6,7 @@ const topicController = {
   createTopic: async (req, res) => {
     try {
       const { nama_topics, keterangan, id_subjects, id_jenjang } = req.body;
-
+      const userId = req.user.id;
       // A. Validasi Input Kosong
       if (!nama_topics || !id_subjects || !id_jenjang) {
         return res.status(400).json({ error: "Nama topik, Mata Pelajaran, dan Jenjang wajib diisi" });
@@ -34,7 +34,8 @@ const topicController = {
           nama_topics: nama_topics,
           keterangan: keterangan || "", 
           id_subjects: parseInt(id_subjects),
-          id_jenjang: parseInt(id_jenjang)
+          id_jenjang: parseInt(id_jenjang),
+          id_user: userId
         },
       });
 
@@ -52,7 +53,13 @@ const topicController = {
   // --- 2. READ ALL TOPICS ---
   getAllTopics: async (req, res) => {
     try {
+
+    const userId = req.user.id;
+    const userRole = req.user.role;
+    const whereClause = userRole === 'Admin' ? {} : { id_user: userId };
+
       const topics = await prisma.topics.findMany({
+        where: whereClause,
         include: {
           subject: true, 
           jenjang: true 
