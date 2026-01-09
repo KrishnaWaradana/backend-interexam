@@ -1,34 +1,25 @@
-// apps/backend/src/routes/paketSoalRoutes.js
-
 const express = require('express');
 const router = express.Router();
-
-// Import Controller
 const paketSoalController = require('../controllers/paketSoalController');
-
-// Import Middleware & Utils
 const { authenticateToken, requireRole } = require('../middleware/authMiddleware');
 const uploadPaket = require('../utils/upload'); 
 
-// ==========================================
-// ROUTES KHUSUS PAKET SOAL
-// ==========================================
+// 1. GET ALL
+router.get('/', authenticateToken, paketSoalController.getAllPaket);
 
-// 1. GET BANK SOAL (Untuk Modal)
-// URL Nanti: GET /api/admin/paket-soal/bank-soal
-router.get('/bank-soal', 
-    authenticateToken, 
-    requireRole(['Admin', 'Validator']), 
-    paketSoalController.getBankSoal
-);
+// 2. GET BANK SOAL (HARUS DI ATAS /:id)
+router.get('/bank-soal', authenticateToken, requireRole(['Admin', 'Validator']), paketSoalController.getBankSoal);
 
-// 2. CREATE PAKET SOAL
-// URL Nanti: POST /api/admin/paket-soal/
-router.post('/', 
-    authenticateToken, 
-    requireRole(['Admin']), 
-    uploadPaket.single('image'), // Sesuai field frontend
-    paketSoalController.createPaketSoal
-);
+// 3. GET DETAIL (Pastikan ini ada!)
+router.get('/:id', authenticateToken, paketSoalController.getPaketDetail);
+
+// 4. CREATE
+router.post('/', authenticateToken, requireRole(['Admin']), uploadPaket.single('image'), paketSoalController.createPaketSoal);
+
+// 5. UPDATE (Pastikan ini ada!)
+router.put('/:id', authenticateToken, requireRole(['Admin']), uploadPaket.single('image'), paketSoalController.updatePaket);
+
+// 6. DELETE
+router.delete('/:id', authenticateToken, requireRole(['Admin']), paketSoalController.deletePaket);
 
 module.exports = router;
