@@ -3,7 +3,7 @@ const prisma = require('../config/prismaClient');
 // --- 1. CRUD CREATE (Add Subject) ---
 exports.addSubject = async (req, res) => {
     const { nama_subject, keterangan } = req.body; 
-    const userId = req.user.id_user; // Diambil dari token login
+    const userId = req.user.id; // Diambil dari token login
 
     try {
         if (!nama_subject) {
@@ -40,7 +40,7 @@ exports.addSubject = async (req, res) => {
 
 // --- 2. CRUD READ (Get Subjects - Filtered by User) ---
 exports.getAllSubjects = async (req, res) => {
-    const userId = req.user.id_user;
+    const userId = req.user.id;
     const userRole = req.user.role;
 
     try {
@@ -56,7 +56,8 @@ exports.getAllSubjects = async (req, res) => {
         const subjectsWithKeterangan = subjects.map(s => ({
             id_subject: s.id_subject,
             nama_subject: s.nama_subject,
-            keterangan: s.keterangan || "" 
+            keterangan: s.keterangan || "" ,
+            id_user: userId
         }));
 
         res.status(200).json({ 
@@ -74,7 +75,7 @@ exports.getAllSubjects = async (req, res) => {
 exports.updateSubject = async (req, res) => {
     const subjectId = parseInt(req.params.id);
     const { nama_subject, keterangan } = req.body;
-    const userId = req.user.id_user;
+    const userId = req.user.id;
     const userRole = req.user.role;
 
     try {
@@ -110,7 +111,7 @@ exports.updateSubject = async (req, res) => {
 // --- 4. CRUD DELETE (Delete Subject with Protection) ---
 exports.deleteSubject = async (req, res) => {
     const subjectId = parseInt(req.params.id);
-    const userId = req.user.id_user;
+    const userId = req.user.id;
     const userRole = req.user.role;
 
     try {
