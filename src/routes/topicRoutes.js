@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const topicController = require('../controllers/topicController');
 const { authenticateToken, requireRole } = require('../middleware/authMiddleware');
-
+const questionLookupController = require('../controllers/contributor/questionLookupController');
 // CREATE
 router.post('/',authenticateToken , topicController.createTopic);
 
@@ -17,5 +17,7 @@ router.put('/:id',authenticateToken, topicController.updateTopic);
 
 // DELETE
 router.delete('/:id',authenticateToken, topicController.deleteTopic);
+
+router.get('/lookup/my-subjects', authenticateToken, questionLookupController.getSubjectsLookup);
 
 module.exports = router;

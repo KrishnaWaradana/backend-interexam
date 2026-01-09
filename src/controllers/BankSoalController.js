@@ -7,28 +7,23 @@ const path = require('path');
 // ==========================================
 const getBankSoal = async (req, res) => {
     // Ambil parameter simulasi dari URL (default ke validator jika kosong)
-    const roleSimulation = req.query.as_role || 'validator'; 
+    const { role, id_user } = req.user; 
 
     try {
         let whereClause = {}; 
         let mockUser = null;
-        if (roleSimulation.toLowerCase() === 'admin') {
-            mockUser = await prisma.users.findFirst({ where: { role: 'Admin' } });
+        if (role === 'Admin') {
+            // Admin melihat semua soal yang sudah dipublish (bukan draft)
             whereClause.status = { not: 'draft' }; 
-        } else {
-            mockUser = await prisma.users.findFirst({ where: { role: 'Validator' } });
-
-            if (!mockUser) {
-                return res.status(200).json({ status: 'success', data: [], message: "Validator tidak ditemukan." });
-            }
-
+        } else if (role === 'Validator') {
+            // Ambil kompetensi berdasarkan id_user yang sedang login
             const kompetensi = await prisma.kompetensiUser.findMany({
-                where: { id_user: mockUser.id_user },
+                where: { id_user: id_user },
                 select: { id_subject: true }
             });
-
+        
             const subjectIds = kompetensi.map(k => k.id_subject);
-
+        
             if (subjectIds.length > 0) {
                 whereClause = {
                     topic: { id_subjects: { in: subjectIds } },
@@ -38,7 +33,7 @@ const getBankSoal = async (req, res) => {
                 return res.status(200).json({ 
                     status: 'success', 
                     data: [], 
-                    message: `Validator ${mockUser.nama_user} belum memiliki kompetensi.` 
+                    message: "Anda belum memiliki akses ke bidang studi manapun." 
                 });
             }
         }
@@ -76,11 +71,9 @@ const getBankSoal = async (req, res) => {
 
         res.status(200).json({ 
             status: 'success', 
-            role_detected: roleSimulation,
-            current_user_simulated: mockUser ? mockUser.nama_user : 'None',
+            role_detected: role,
             data: formattedData 
         });
-
     } catch (error) {
         console.error("Error getBankSoal:", error);
         res.status(500).json({ message: error.message });
@@ -173,7 +166,7 @@ const updateSoal = async (req, res) => {
             }
             
 
-            if ((newStatusEnum === 'disetujui' || newStatusEnum === 'ditolak') && validatorId) {
+            if (newStatusEnum  && validatorId) {
                 await tx.validasiSoal.create({
                     data: {
                         id_soal: parseInt(id),

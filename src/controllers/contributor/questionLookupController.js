@@ -7,49 +7,29 @@ const { LevelKesulitan } = require('@prisma/client');
  */
 exports.getSubjectsLookup = async (req, res) => {
     try {
-        // Ambil ID dari token (UserID 12)
-        const userId = req.user?.id || req.user?.id_user;
+        // req.user.id_user didapat dari middleware authenticateToken
+        const userId = req.user.id_user; 
 
-        if (!userId) {
-            return res.status(401).json({ message: "Sesi tidak valid." });
-        }
-
-        // QUERY: Ambil data dari tabel relasi kompetensiUser
-        const keahlian = await prisma.kompetensiUser.findMany({
-            where: { 
-                id_user: Number(userId) 
-            },
+        const kompetensi = await prisma.kompetensiUser.findMany({
+            where: { id_user: userId },
             include: {
                 subject: {
-                    select: {
-                        id_subject: true,
-                        nama_subject: true,
-                        keterangan: true
-                    }
+                    select: { id_subject: true, nama_subject: true }
                 }
             }
         });
 
-        // Mapping hasil agar menjadi array of objects subject yang bersih
-        const formattedData = keahlian.map(item => ({
-            id_subject: item.subject.id_subject,
-            nama_subject: item.subject.nama_subject,
-            keterangan: item.subject.keterangan
+        const mappedData = kompetensi.map(k => ({
+            id_subject: k.subject.id_subject,
+            nama_subject: k.subject.nama_subject
         }));
 
-        console.log(`[DEBUG] User ID ${userId} menarik ${formattedData.length} keahlian.`);
-
-        return res.status(200).json({ 
-            status: "success", 
-            data: formattedData 
-        });
-
+        res.status(200).json({ data: mappedData });
     } catch (error) {
-        console.error("ERROR getSubjectsLookup:", error);
-        return res.status(500).json({ message: 'Gagal memfilter keahlian.' });
+        console.error(error);
+        res.status(500).json({ message: 'Gagal mengambil data Mata Pelajaran sesuai kompetensi.' });
     }
 };
-
 /**
  * 2. GET TOPICS LOOKUP
  */
