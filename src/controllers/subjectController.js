@@ -11,12 +11,23 @@ exports.addSubject = async (req, res) => {
         }
         
         // Memeriksa duplikasi khusus untuk user yang sedang login
+        // const existingSubject = await prisma.subjects.findFirst({
+        //     where: { 
+        //         nama_subject: nama_subject,
+        //         id_user: userId 
+        //     } 
+        // });
+
         const existingSubject = await prisma.subjects.findFirst({
             where: { 
-                nama_subject: nama_subject,
-                id_user: userId 
+                nama_subject: {
+                    equals: nama_subject,
+                    mode: 'insensitive'
+                },
+                // id_user: userId 
             } 
         });
+        
         
         if (existingSubject) {
             return res.status(409).json({ message: 'Subject ini sudah Anda buat sebelumnya.' });
@@ -90,6 +101,25 @@ exports.updateSubject = async (req, res) => {
         // PROTEKSI: Jika bukan miliknya dan bukan Admin, dilarang edit
         if (existingSubject.id_user !== userId && userRole !== 'Admin') {
             return res.status(403).json({ message: 'Anda tidak memiliki hak akses untuk mengubah subject ini.' });
+        }
+
+        if (nama_subject && nama_subject.toLowerCase() !== existingSubject.nama_subject.toLowerCase()) {
+            const duplicateCheck = await prisma.subjects.findFirst({
+                where: {
+                    nama_subject: {
+                        equals: nama_subject,
+                        mode: 'insensitive'
+                    },
+                    // PENTING: Jangan anggap duplikat jika itu ID dia sendiri
+                    NOT: {
+                        id_subject: subjectId 
+                    }
+                }
+            });
+
+            if (duplicateCheck) {
+                return res.status(409).json({ message: `Gagal update: Nama "${nama_subject}" sudah digunakan.` });
+            }
         }
         
         const updatedSubject = await prisma.subjects.update({
