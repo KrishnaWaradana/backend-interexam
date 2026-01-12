@@ -114,6 +114,16 @@ const getSoalDetail = async (req, res) => {
                 //         validator: { select: { nama_user: true } }
                 //     }
                 // }
+
+                soalPaket: {
+                    include: {
+                        paketSoal: {
+                            select: { nama_paket: true }
+                        }
+                    }
+                },
+
+
                 validasi: {
                     orderBy: { id_validasi: 'desc' }, 
                     take: 1,
@@ -138,6 +148,9 @@ const getSoalDetail = async (req, res) => {
 
         const responseData = {
             ...soal,
+
+            list_paket: soal.soalPaket?.map(item => item.paketSoal?.nama_paket).filter(Boolean) || [],
+            
             nama_validator: namaValidator,
             mata_pelajaran: soal.topic?.subject?.nama_subject,
             nama_topik: soal.topic?.nama_topics
