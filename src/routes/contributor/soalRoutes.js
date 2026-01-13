@@ -1,16 +1,28 @@
 const express = require('express');
 const router = express.Router();
 
-// Import Controller
+// --- IMPORT CONTROLLER ---
 const questionController = require('../../controllers/contributor/questionController'); 
+// TAMBAHKAN INI (Sesuaikan path file-nya)
+const questionLookupController = require('../../controllers/contributor/questionLookupController');
+
 const upload = require('../../middleware/upload'); 
+const { authenticateToken, requireRole } = require('../../middleware/authMiddleware');
 
-// 1. READ (Lihat Daftar Soal & Detail Soal)
-router.get('/my-questions', questionController.getQuestionsByContributor);
-router.get('/question/:id', questionController.getQuestionDetail);
+// --- 1. LOOKUP DATA (Dropdowns) ---
+// Cari bagian lookup di soalRoutes.js kamu dan ganti baris subject-nya
+router.get('/lookup/my-subjects', authenticateToken, questionLookupController.getSubjectsLookup);
+router.get('/lookup/topics/:subjectId', authenticateToken, questionLookupController.getTopicsLookup);
+router.get('/lookup/levels', authenticateToken, questionLookupController.getLevelKesulitanLookup);
 
-// 2. CREATE (Tambah Soal Baru)
+// --- 2. READ SOAL ---
+router.get('/my-questions', authenticateToken, questionController.getQuestionsByContributor);
+router.get('/question/:id', authenticateToken, questionController.getQuestionDetail);
+
+// --- 3. CREATE SOAL ---
 router.post('/question', 
+    authenticateToken, 
+    requireRole(['Contributor']),
     upload.fields([
         { name: 'image_soal', maxCount: 1 },      
         { name: 'image_jawaban', maxCount: 10 },
@@ -19,8 +31,10 @@ router.post('/question',
     questionController.addQuestion 
 ); 
 
-// 3. UPDATE
+// --- 4. UPDATE SOAL ---
 router.put('/question/:id', 
+    authenticateToken,
+    requireRole(['Contributor']),
     upload.fields([
         { name: 'image_soal', maxCount: 1 },      
         { name: 'image_jawaban', maxCount: 10 },
@@ -29,9 +43,7 @@ router.put('/question/:id',
     questionController.editQuestion 
 );
 
-// 4. DELETE
-router.delete('/question/:id', 
-    questionController.deleteQuestion 
-);
+// --- 5. DELETE SOAL ---
+router.delete('/question/:id', authenticateToken, requireRole(['Contributor']), questionController.deleteQuestion);
 
 module.exports = router;

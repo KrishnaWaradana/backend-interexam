@@ -59,6 +59,7 @@ const uploadPaket = multer({ storage: storagePaket });
 router.get('/admin/roles', userController.getAllowedRoles); 
 router.get('/admin/users', userController.getAllUsers); 
 router.get('/admin/user/:id', userController.getUserById);
+router.get('/admin/subjects-list', userController.getAllSubjects);
 
 // Create User (Upload Foto)
 router.post('/admin/user', uploadUser.single('profile_picture'), userController.addUser);
@@ -82,10 +83,10 @@ router.put(
 // ROUTE MANAGEMENT SUBJECTS
 // =================================================================
 
-router.post('/admin/subject', subjectController.addSubject); 
-router.get('/admin/subjects', subjectController.getAllSubjects); 
-router.put('/admin/subject/:id', subjectController.updateSubject); 
-router.delete('/admin/subject/:id', subjectController.deleteSubject);
+router.post('/admin/subject', authenticateToken, subjectController.addSubject); 
+router.get('/admin/subjects', authenticateToken, subjectController.getAllSubjects); 
+router.put('/admin/subject/:id', authenticateToken, subjectController.updateSubject); 
+router.delete('/admin/subject/:id', authenticateToken, subjectController.deleteSubject);
 
 
 module.exports = router;

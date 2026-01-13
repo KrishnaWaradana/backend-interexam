@@ -71,14 +71,6 @@ const copyExistingFile = (oldRelativePath, targetFolder) => {
     return null;
 };
 
-const getContributorIdFromDB = async () => {
-    const user = await prisma.users.findFirst({
-        where: { role: { in: ['Contributor', 'Admin'] } },
-        select: { id_user: true }
-    });
-    if (!user) throw new Error('User Contributor tidak ditemukan.');
-    return user.id_user;
-};
 
 // =================================================================
 // 1. ADD QUESTION 
@@ -101,7 +93,7 @@ const addQuestion = async (req, res) => {
 
         if (!id_topik || id_topik === "undefined") throw new Error("Topik wajib dipilih!");
         
-        const contributorId = await getContributorIdFromDB();
+        const contributorId = req.user.id;
         const statusSoal = action_type === 'Ajukan' ? StatusSoal.need_verification : StatusSoal.draft;
         
         let jenis = tipe_soal === 'pilihan_ganda' ? 'multiple_choice' : 'multiple_answer';
@@ -113,9 +105,9 @@ const addQuestion = async (req, res) => {
                 text_soal, jenis_soal: jenis, level_kesulitan, status: statusSoal,
                 contributor: { connect: { id_user: contributorId } },
                 topic: { connect: { id_topics: parseInt(id_topik) } }, 
-                subTopic: id_subtopik && id_subtopik !== "null" 
-            ? { connect: { id_subtopics: parseInt(id_subtopik) } } 
-            : undefined
+            //     subTopic: id_subtopik && id_subtopik !== "null" 
+            // ? { connect: { id_subtopics: parseInt(id_subtopik) } } 
+            // : undefined
     
             }
         });
@@ -215,7 +207,7 @@ const addQuestion = async (req, res) => {
 // =================================================================
 const getQuestionsByContributor = async (req, res) => {
     try {
-        const contributorId = await getContributorIdFromDB(); 
+        const contributorId = req.user.id;
         
         // --- 1. Hitung Statistik (Tetap Sama) ---
         const [totalSoal, totalVerified, totalDraft, totalRejected, totalNeed] = await Promise.all([
@@ -245,7 +237,7 @@ const getQuestionsByContributor = async (req, res) => {
                         jenjang: true  // Ambil info Jenjang
                     }
                 }, 
-                subTopic: true,
+                // subTopic: true,
                 attachments: true, 
                 jawaban: true 
             },
@@ -265,8 +257,8 @@ const getQuestionsByContributor = async (req, res) => {
                 mata_pelajaran: q.topic?.subject?.nama_subject || 'N/A', 
                 jenjang: q.topic?.jenjang?.nama_jenjang || '-', // <--- Field Baru untuk Frontend
                 topik: q.topic?.nama_topics || '-',
-                sub_topik: q.subTopic?.nama_subtopics || '-',
-                id_subtopik: q.id_subtopics,
+                // sub_topik: q.subTopic?.nama_subtopics || '-',
+                // id_subtopik: q.id_subtopics,
 
                 text_soal: q.text_soal,
                 tipe_soal: q.jenis_soal,
@@ -304,6 +296,9 @@ const editQuestion = async (req, res) => {
             where: { id_soal: questionId }, 
             include: { attachments: true, jawaban: true }
         });
+        if (existingSoal.id_contributor !== req.user.id && req.user.role !== 'Admin') {
+            return res.status(403).json({ message: "Anda tidak memiliki akses ke soal ini." });
+        }
         if (!existingSoal) throw new Error('Soal tidak ditemukan.');
 
         // A. UPDATE GAMBAR SOAL
@@ -348,7 +343,7 @@ const editQuestion = async (req, res) => {
             data: { 
                 text_soal, level_kesulitan, status: statusSoal, jenis_soal: jenis, 
                 id_topics: parseInt(id_topik),
-                id_subtopics: id_subtopik && id_subtopik !== "null" ? parseInt(id_subtopik) : null
+                // id_subtopics: id_subtopik && id_subtopik !== "null" ? parseInt(id_subtopik) : null
             }
         });
 
@@ -403,6 +398,9 @@ const deleteQuestion = async (req, res) => {
         const existingSoal = await prisma.soal.findUnique({
             where: { id_soal: questionId }, include: { attachments: true, jawaban: true } 
         });
+        if (existingSoal.id_contributor !== req.user.id && req.user.role !== 'Admin') {
+            return res.status(403).json({ message: "Anda tidak memiliki akses ke soal ini." });
+        }
         if (!existingSoal) return res.status(404).json({ message: 'Soal tidak ditemukan.' });
 
         if (existingSoal.attachments && existingSoal.attachments.length > 0) {
@@ -437,10 +435,11 @@ const getQuestionDetail = async (req, res) => {
                 topic: {
                     include: { subject: true, jenjang: true }
                 },
-                subTopic: true
+                // subTopic: true
             }
             
         });
+        
 
         if (!soal) return res.status(404).json({ message: 'Soal tidak ditemukan.' });
 
@@ -460,8 +459,8 @@ const getQuestionDetail = async (req, res) => {
             id_topik: soal.id_topics,
             id_subject: soal.topic ? soal.topic.id_subjects : null,
             nama_subject: soal.topic?.subject?.nama_subject, 
-            id_subtopik: soal.id_subtopics,
-            nama_subtopik: soal.subTopic?.nama_subtopics || null,
+            // id_subtopik: soal.id_subtopics,
+            // nama_subtopik: soal.subTopic?.nama_subtopics || null,
             list_jawaban: soal.jawaban.map(j => ({
                 id: j.id_jawaban,
                 opsi_jawaban_text: j.opsi_jawaban_text,

@@ -1,20 +1,23 @@
 const express = require('express');
 const router = express.Router();
 const topicController = require('../controllers/topicController');
-
+const { authenticateToken, requireRole } = require('../middleware/authMiddleware');
+const questionLookupController = require('../controllers/contributor/questionLookupController');
 // CREATE
-router.post('/', topicController.createTopic);
+router.post('/',authenticateToken , topicController.createTopic);
 
 // READ ALL
-router.get('/', topicController.getAllTopics);
+router.get('/',authenticateToken, topicController.getAllTopics);
 
 // READ ONE
-router.get('/:id', topicController.getTopicById);
+router.get('/:id',authenticateToken,  topicController.getTopicById);
 
 // UPDATE
-router.put('/:id', topicController.updateTopic);
+router.put('/:id',authenticateToken, topicController.updateTopic);
 
 // DELETE
-router.delete('/:id', topicController.deleteTopic);
+router.delete('/:id',authenticateToken, topicController.deleteTopic);
+
+router.get('/lookup/my-subjects', authenticateToken, questionLookupController.getSubjectsLookup);
 
 module.exports = router;

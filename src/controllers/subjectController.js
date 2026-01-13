@@ -3,25 +3,41 @@ const prisma = require('../config/prismaClient');
 // --- 1. CRUD CREATE (Add Subject) ---
 exports.addSubject = async (req, res) => {
     const { nama_subject, keterangan } = req.body; 
+    const userId = req.user.id; // Diambil dari token login
 
     try {
         if (!nama_subject) {
             return res.status(400).json({ message: 'Nama Subject wajib diisi.' });
         }
         
-        // Memeriksa duplikasi menggunakan findFirst
+        // Memeriksa duplikasi khusus untuk user yang sedang login
+        // const existingSubject = await prisma.subjects.findFirst({
+        //     where: { 
+        //         nama_subject: nama_subject,
+        //         id_user: userId 
+        //     } 
+        // });
+
         const existingSubject = await prisma.subjects.findFirst({
-            where: { nama_subject: nama_subject } 
+            where: { 
+                nama_subject: {
+                    equals: nama_subject,
+                    mode: 'insensitive'
+                },
+                // id_user: userId 
+            } 
         });
         
+        
         if (existingSubject) {
-            return res.status(409).json({ message: 'Subject ini sudah terdaftar. Gunakan nama lain.' });
+            return res.status(409).json({ message: 'Subject ini sudah Anda buat sebelumnya.' });
         }
 
         const newSubject = await prisma.subjects.create({
             data: {
                 nama_subject: nama_subject,
-                keterangan: keterangan || null
+                keterangan: keterangan || null,
+                id_user: userId // Menghubungkan subject ke pembuatnya
             }
         });
 
@@ -33,27 +49,31 @@ exports.addSubject = async (req, res) => {
     }
 };
 
-// --- 2. CRUD READ (Get All Subjects) ---
+// --- 2. CRUD READ (Get Subjects - Filtered by User) ---
 exports.getAllSubjects = async (req, res) => {
-    // console.log(" [DEBUG] Request masuk ke getAllSubjects!");
+    const userId = req.user.id;
+    const userRole = req.user.role;
+
     try {
+        // Logika: Admin bisa lihat semua, Guru/Lainnya hanya lihat miliknya sendiri
+        const whereClause = userRole === 'Admin' ? {} : { id_user: userId };
+
         const subjects = await prisma.subjects.findMany({
-            select: { id_subject: true, nama_subject: true, keterangan: true }, 
+            where: whereClause,
+            select: { id_subject: true, nama_subject: true, keterangan: true, id_user: true }, 
             orderBy: { nama_subject: 'asc' }
         });
-
-        // console.log(" [DEBUG] Data dari Database:", subjects);
 
         const subjectsWithKeterangan = subjects.map(s => ({
             id_subject: s.id_subject,
             nama_subject: s.nama_subject,
-            keterangan: s.keterangan || "" 
+            keterangan: s.keterangan || "" ,
+            id_user: userId
         }));
-
 
         res.status(200).json({ 
             message: 'Daftar Subject berhasil diambil.', 
-            data: subjectsWithKeterangan // Kirim data yang sudah diformat
+            data: subjectsWithKeterangan 
         });
 
     } catch (error) {
@@ -62,30 +82,46 @@ exports.getAllSubjects = async (req, res) => {
     }
 };
 
-
-// --- 3. CRUD UPDATE (Update Subject) ---
+// --- 3. CRUD UPDATE (Update Subject with Protection) ---
 exports.updateSubject = async (req, res) => {
     const subjectId = parseInt(req.params.id);
     const { nama_subject, keterangan } = req.body;
+    const userId = req.user.id;
+    const userRole = req.user.role;
 
     try {
         const existingSubject = await prisma.subjects.findUnique({
             where: { id_subject: subjectId }
         });
+
         if (!existingSubject) {
             return res.status(404).json({ message: 'Subject tidak ditemukan.' });
         }
-        
-        // Cek apakah nama_subject baru sudah terpakai oleh Subject lain (kecuali diri sendiri)
-        if (nama_subject && nama_subject !== existingSubject.nama_subject) {
-             const checkDuplicate = await prisma.subjects.findFirst({
-                where: { nama_subject: nama_subject }
-            });
-            if (checkDuplicate) {
-                return res.status(409).json({ message: 'Nama Subject baru sudah digunakan.' });
-            }
+
+        // PROTEKSI: Jika bukan miliknya dan bukan Admin, dilarang edit
+        if (existingSubject.id_user !== userId && userRole !== 'Admin') {
+            return res.status(403).json({ message: 'Anda tidak memiliki hak akses untuk mengubah subject ini.' });
         }
 
+        if (nama_subject && nama_subject.toLowerCase() !== existingSubject.nama_subject.toLowerCase()) {
+            const duplicateCheck = await prisma.subjects.findFirst({
+                where: {
+                    nama_subject: {
+                        equals: nama_subject,
+                        mode: 'insensitive'
+                    },
+                    // PENTING: Jangan anggap duplikat jika itu ID dia sendiri
+                    NOT: {
+                        id_subject: subjectId 
+                    }
+                }
+            });
+
+            if (duplicateCheck) {
+                return res.status(409).json({ message: `Gagal update: Nama "${nama_subject}" sudah digunakan.` });
+            }
+        }
+        
         const updatedSubject = await prisma.subjects.update({
             where: { id_subject: subjectId },
             data: {
@@ -102,11 +138,26 @@ exports.updateSubject = async (req, res) => {
     }
 };
 
-// --- 4. CRUD DELETE (Delete Subject) ---
+// --- 4. CRUD DELETE (Delete Subject with Protection) ---
 exports.deleteSubject = async (req, res) => {
     const subjectId = parseInt(req.params.id);
+    const userId = req.user.id;
+    const userRole = req.user.role;
 
     try {
+        const existingSubject = await prisma.subjects.findUnique({
+            where: { id_subject: subjectId }
+        });
+
+        if (!existingSubject) {
+            return res.status(404).json({ message: 'Subject tidak ditemukan.' });
+        }
+
+        // PROTEKSI: Jika bukan miliknya dan bukan Admin, dilarang hapus
+        if (existingSubject.id_user !== userId && userRole !== 'Admin') {
+            return res.status(403).json({ message: 'Akses ditolak.' });
+        }
+
         await prisma.subjects.delete({
             where: { id_subject: subjectId }
         });
@@ -116,7 +167,7 @@ exports.deleteSubject = async (req, res) => {
     } catch (error) {
         console.error('Prisma Error saat DELETE Subject:', error);
         if (error.code === 'P2003') {
-            return res.status(409).json({ message: 'Gagal hapus: Subject masih terikat dengan Topik atau data User (Kompetensi).' });
+            return res.status(409).json({ message: 'Gagal hapus: Subject masih terikat dengan data lain.' });
         }
         res.status(500).json({ message: 'Gagal menghapus Subject.' });
     }
