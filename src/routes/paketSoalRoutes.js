@@ -14,12 +14,12 @@ router.get('/bank-soal', authenticateToken, requireRole(['Admin', 'Validator']),
 router.get('/:id', authenticateToken, paketSoalController.getPaketDetail);
 
 // 4. CREATE
-router.post('/', authenticateToken, requireRole(['Admin']), uploadPaket.single('image'), paketSoalController.createPaketSoal);
+router.post('/', authenticateToken, requireRole(['Admin', 'Validator']), uploadPaket.single('image'), paketSoalController.createPaketSoal);
 
 // 5. UPDATE (Pastikan ini ada!)
-router.put('/:id', authenticateToken, requireRole(['Admin']), uploadPaket.single('image'), paketSoalController.updatePaket);
+router.put('/:id', authenticateToken, requireRole(['Admin', 'Validator']), uploadPaket.single('image'), paketSoalController.updatePaket);
 
 // 6. DELETE
-router.delete('/:id', authenticateToken, requireRole(['Admin']), paketSoalController.deletePaket);
+router.delete('/:id', authenticateToken, requireRole(['Admin', 'Validator']), paketSoalController.deletePaket);
 
 module.exports = router;
