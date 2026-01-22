@@ -124,7 +124,7 @@
             const usersData = await prisma.users.findMany({
                 select: {
                     id_user: true, username: true, email_user: true, nama_user: true,
-                    role: true, phone: true, foto: true
+                    role: true, phone: true, foto: true, status: true
                 },
                 orderBy: { id_user: 'asc' }
             });
