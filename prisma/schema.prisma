@@ -253,7 +253,7 @@ model CategorySubject {
 model Soal {
   id_soal             Int             @id @default(autoincrement())
   tanggal_pembuatan   String?         @db.VarChar(45)
-  text_soal           String?         @db.VarChar(1000)
+  text_soal           String?         @db.Text
   jenis_soal          JenisSoal?
   level_kesulitan     LevelKesulitan?
   id_contributor      Int
@@ -437,7 +437,7 @@ model JawabanSoal {
   status              Boolean?                 @default(false)
   short_answer        String?                  @db.VarChar(45)
   soal_id_soal        Int
-  pembahasan          String?                  @db.VarChar(200)
+  pembahasan          String?                  @db.Text
   soal                Soal                     @relation(fields: [soal_id_soal], references: [id_soal])
   history             HistoryPengerjaanPaket[]
 

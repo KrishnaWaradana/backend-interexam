@@ -24,7 +24,7 @@ exports.addSubject = async (req, res) => {
                     equals: nama_subject,
                     mode: 'insensitive'
                 },
-                // id_user: userId 
+                 id_user: userId 
             } 
         });
         

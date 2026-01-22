@@ -56,16 +56,16 @@ const uploadPaket = multer({ storage: storagePaket });
 // ROUTE MANAGEMENT USERS
 // =================================================================
 
-router.get('/admin/roles', userController.getAllowedRoles); 
-router.get('/admin/users', userController.getAllUsers); 
-router.get('/admin/user/:id', userController.getUserById);
-router.get('/admin/subjects-list', userController.getAllSubjects);
+router.get('/admin/roles',authenticateToken, userController.getAllowedRoles); 
+router.get('/admin/users',authenticateToken, userController.getAllUsers); 
+router.get('/admin/user/:id',authenticateToken, userController.getUserById);
+router.get('/admin/subjects-list',authenticateToken, userController.getAllSubjects);
 
 // Create User (Upload Foto)
-router.post('/admin/user', uploadUser.single('profile_picture'), userController.addUser);
+router.post('/admin/user',authenticateToken, uploadUser.single('profile_picture'), userController.addUser);
 
 // Update User Profile (Upload Foto)
-router.put('/admin/user/:id', uploadUser.single('profile_picture'), userController.updateUser);
+router.put('/admin/user/:id',authenticateToken, uploadUser.single('profile_picture'), userController.updateUser);
 
 // Delete User
 router.delete('/admin/user/:id', userController.deleteUser); 
