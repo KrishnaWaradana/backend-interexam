@@ -4,7 +4,14 @@ const jenjangController = {
   // --- 1. CREATE JENJANG ---
   createJenjang: async (req, res) => {
     const { nama_jenjang, keterangan } = req.body;
-    const userId = req.user.id;
+
+    // const userId = req.user.id;
+    const userId = req.user.id || req.user.id_user;
+
+    // Validasi Safety: Jika ID tidak ketemu, stop proses
+  if (!userId) {
+    return res.status(401).json({ error: "Unauthorized: User ID tidak ditemukan dalam token." });
+  }
 
     try {
       // 1. Validasi Input Wajib
