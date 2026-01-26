@@ -90,6 +90,21 @@ const addQuestion = async (req, res) => {
             pembahasan_umum, opsi_jawaban, action_type, 
             old_image_soal, old_image_pembahasan 
         } = req.body;
+        
+        if (text_soal) {
+            const soalWordCount = text_soal.trim().split(/\s+/).filter(word => word.length > 0).length;
+            if (soalWordCount > 200) {
+                throw new Error(`Soal terlalu panjang (${soalWordCount} kata). Maksimal 200 kata!`);
+            }
+        }
+        
+        // 2. Validasi Pembahasan (Max 1000 Kata)
+        if (pembahasan_umum) {
+            const pembWordCount = pembahasan_umum.trim().split(/\s+/).filter(word => word.length > 0).length;
+            if (pembWordCount > 1000) {
+                throw new Error(`Pembahasan terlalu panjang (${pembWordCount} kata). Maksimal 1000 kata!`);
+            }
+        }
 
         if (!id_topik || id_topik === "undefined") throw new Error("Topik wajib dipilih!");
         
@@ -300,6 +315,7 @@ const editQuestion = async (req, res) => {
             return res.status(403).json({ message: "Anda tidak memiliki akses ke soal ini." });
         }
         if (!existingSoal) throw new Error('Soal tidak ditemukan.');
+        
 
         // A. UPDATE GAMBAR SOAL
         if (newSoalFile) {
@@ -336,6 +352,23 @@ const editQuestion = async (req, res) => {
         let jenis = 'multiple_choice';
         if(tipe_soal) {
              jenis = (tipe_soal === 'pilihan_ganda' || tipe_soal === 'multiple_choice') ? 'multiple_choice' : 'multiple_answer';
+        }
+
+        // 1. Validasi Soal (Maks 200 Kata)
+        if (text_soal) {
+            const soalWords = text_soal.trim().split(/\s+/).filter(w => w.length > 0).length;
+            if (soalWords > 200) {
+                // Gunakan return agar berhenti di sini
+                return res.status(400).json({ message: `Update Gagal: Soal terlalu panjang (${soalWords} kata). Maksimal 200 kata!` });
+            }
+        }
+
+        // 2. Validasi Pembahasan (Maks 1000 Kata)
+        if (pembahasan_umum) {
+            const pembWords = pembahasan_umum.trim().split(/\s+/).filter(w => w.length > 0).length;
+            if (pembWords > 1000) {
+                return res.status(400).json({ message: `Update Gagal: Pembahasan terlalu panjang (${pembWords} kata). Maksimal 1000 kata!` });
+            }
         }
 
         await prisma.soal.update({

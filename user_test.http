@@ -601,3 +601,47 @@ Content-Type: application/json
 ### ==============================================
 DELETE {{baseUrl}}/subtopics/{{idSubTopik}}
 Content-Type: application/json
+
+
+
+### ==============================================
+### TESTING CREATE TOPIC (TANPA JWT)
+### ==============================================
+@baseUrl = http://localhost:5000/api/v1
+
+# 1. CREATE TOPIC
+# Pastikan id_subjects dan id_jenjang sesuai dengan data yang ada di DB kamu
+POST {{baseUrl}}/topics
+Content-Type: application/json
+
+{
+  "nama_topics": "Aljabar Linear v1",
+  "id_subjects": 20,
+  "id_jenjang": 1,
+  "keterangan": "Testing tanpa token",
+  "id_user": 12
+}
+
+
+### 2. LIHAT HASILNYA (GET ALL)
+# Untuk cek apakah id_user 12 benar-benar masuk ke database
+GET {{baseUrl}}/topics
+Content-Type: application/json
+
+---
+
+### 3. UPDATE TOPIK (Ganti angka 1 dengan ID yang muncul setelah POST)
+PUT {{baseUrl}}/topics/1
+Content-Type: application/json
+
+{
+  "nama_topics": "Aljabar Linear v2",
+  "id_user": 12,
+  "keterangan": "Deskripsi setelah diupdate"
+}
+
+---
+
+### 4. DELETE TOPIK (Ganti angka 1 dengan ID yang mau dihapus)
+DELETE {{baseUrl}}/topics/1
+Content-Type: application/json

@@ -22,7 +22,8 @@ const subTopicRoutes = require('./routes/subTopikRoutes');
 const categoryRoutes = require('./routes/categoryRoutes');
 
 // MIDDLEWARE WAJIB
-app.use(express.json()); // Parsing JSON body
+app.use(express.json({ limit: '10mb' })); 
+app.use(express.urlencoded({ limit: '10mb', extended: true })); // Parsing JSON body
 app.use(cors({ 
     origin: ['http://localhost:5173', 'http://localhost:3000'], 
     credentials: true 
