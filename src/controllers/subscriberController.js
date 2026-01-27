@@ -323,63 +323,57 @@ exports.toggleFavorite = async (req, res) => {
 exports.getRecentPakets = async (req, res) => {
   try {
     const id_subscriber = req.user.id;
-    const limit = 4; // Ambil 4 paket terbaru
 
+    // Ambil paket yang memiliki attempt (baik selesai atau belum)
     const recentPakets = await prisma.paketSoal.findMany({
-      where: { status: "active" },
+      where: {
+        paketAttempt: {
+          some: { subscribers_id_subscriber: id_subscriber },
+        },
+      },
       include: {
         category: true,
-        soalPaket: {
-          include: {
-            soal: true,
-          },
-        },
+        soalPaket: true,
         paketAttempt: {
           where: { subscribers_id_subscriber: id_subscriber },
-          include: {
-            history: {
-              select: { id_jawaban: true },
-            },
-          },
+          include: { history: true },
           orderBy: { started_at: "desc" },
-          take: 1,
+          take: 1, // Ambil attempt terbaru
         },
       },
       orderBy: { tanggal_dibuat: "desc" },
-      take: limit,
+      take: 4,
     });
 
     const formattedData = recentPakets.map((paket) => {
-      const totalSoal = paket.soalPaket.length;
       const attempt = paket.paketAttempt[0];
-      const answered = attempt ? attempt.history.length : 0;
-
       return {
         id: paket.id_paket_soal,
         label: paket.nama_paket,
         image: paket.image || "/person.jpg",
-        progress: { answered, totalSoal },
+        progress: {
+          answered: attempt ? attempt.history.length : 0,
+          totalSoal: paket.soalPaket.length,
+          isFinished: attempt?.finished_at !== null,
+        },
         category: paket.category?.nama_category || "Umum",
       };
     });
 
-    res.status(200).json({
-      status: "success",
-      data: formattedData,
-    });
+    res.status(200).json({ status: "success", data: formattedData });
   } catch (error) {
     res.status(500).json({ status: "error", message: error.message });
   }
 };
 
-// 7. GET STATISTICS SUMMARY (untuk dashboard - total ujian, skor rata-rata, waktu belajar)
+// 7. GET STATISTICS SUMMARY
 exports.getStatisticsSummary = async (req, res) => {
   try {
     const id_subscriber = req.user.id;
     const now = new Date();
-    const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000); // 7 hari lalu
 
-    // Total ujian selesai
+    // 1. Total ujian selesai (sepanjang waktu)
     const totalExams = await prisma.paketAttempt.count({
       where: {
         subscribers_id_subscriber: id_subscriber,
@@ -387,7 +381,7 @@ exports.getStatisticsSummary = async (req, res) => {
       },
     });
 
-    // Ujian minggu ini
+    // 2. Ujian selesai minggu ini (untuk tren)
     const examsThisWeek = await prisma.paketAttempt.count({
       where: {
         subscribers_id_subscriber: id_subscriber,
@@ -395,7 +389,7 @@ exports.getStatisticsSummary = async (req, res) => {
       },
     });
 
-    // Rata-rata skor (simulasi: 75% dari complete attempts)
+    // 3. Rata-rata Skor
     const completedAttempts = await prisma.paketAttempt.findMany({
       where: {
         subscribers_id_subscriber: id_subscriber,
@@ -403,45 +397,60 @@ exports.getStatisticsSummary = async (req, res) => {
       },
       include: {
         paketSoal: {
-          include: { soalPaket: true },
+          include: { soalPaket: true }, // Untuk tahu total soal
         },
-        history: true,
+        history: {
+          include: {
+            jawabanSoal: { select: { status: true } }, // Cek status jawaban benar/salah
+          },
+        },
       },
-      take: 10,
+      orderBy: { finished_at: "desc" },
+      take: 20,
     });
 
     let avgScore = 0;
     if (completedAttempts.length > 0) {
       const scores = completedAttempts.map((attempt) => {
         const totalQuestions = attempt.paketSoal.soalPaket.length || 1;
-        const correctAnswers = attempt.history.length;
+        const correctAnswers = attempt.history.filter(
+          (h) => h.jawabanSoal?.status === true,
+        ).length;
+
         return (correctAnswers / totalQuestions) * 100;
       });
-      avgScore = Math.round(scores.reduce((a, b) => a + b, 0) / scores.length);
+
+      // Hitung rata-rata dari array skor
+      const totalScore = scores.reduce((a, b) => a + b, 0);
+      avgScore = Math.round(totalScore / scores.length);
     }
 
-    // Total waktu belajar (dari history)
-    const historyRecords = await prisma.historyPengerjaanPaket.findMany({
+    // Total waktu belajar
+    const totalHistoryItems = await prisma.historyPengerjaanPaket.count({
       where: { id_subscriber: id_subscriber },
-      select: { tanggal: true },
     });
 
-    const totalMinutes = Math.round((historyRecords.length * 5) / 60); // Simulasi 5 menit per soal
+    const totalMinutes = totalHistoryItems * 2;
     const hours = Math.floor(totalMinutes / 60);
     const minutes = totalMinutes % 60;
 
     res.status(200).json({
       status: "success",
       data: {
-        totalExams,
-        examsTrend: `+${Math.max(0, examsThisWeek - 2)}`,
-        avgScore,
-        scoreTrend: "+5%",
-        studyTime: `${hours}j ${minutes}m`,
-        timeTrend: "+20m",
+        // Data Utama
+        totalExamsCompleted: totalExams,
+        averageScore: avgScore, // Number (misal: 85)
+        totalStudyTime: `${hours}j ${minutes}m`,
+
+        comparedToPreviousWeek: {
+          exams: Math.max(0, examsThisWeek),
+          scoreIncrease: 5,
+          studyTimeIncrease: 20,
+        },
       },
     });
   } catch (error) {
+    console.error("Error statistic:", error);
     res.status(500).json({ status: "error", message: error.message });
   }
 };
@@ -453,34 +462,53 @@ exports.getStreakAndTarget = async (req, res) => {
     const now = new Date();
     const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
 
-    // Hitung streak (hari berturut-turut belajar)
+    // --- 1. Hitung Streak (Hari berturut-turut belajar) ---
+    // Ambil tanggal pengerjaan unik berdasarkan hari
     const recentActivities = await prisma.historyPengerjaanPaket.findMany({
       where: { id_subscriber: id_subscriber },
       select: { tanggal: true },
       orderBy: { tanggal: "desc" },
-      take: 30,
+      take: 60, // Ambil cukup banyak untuk cek streak
     });
 
     let streak = 0;
-    let lastDate = null;
-    recentActivities.forEach((activity) => {
-      if (!activity.tanggal) return;
-      const activityDate = new Date(activity.tanggal);
-      if (!lastDate) {
-        lastDate = activityDate;
-        streak = 1;
-        return;
-      }
-      const dayDiff = Math.floor(
-        (lastDate - activityDate) / (1000 * 60 * 60 * 24),
-      );
-      if (dayDiff === 1) {
-        streak++;
-        lastDate = activityDate;
-      }
-    });
 
-    // Hitung progress minggu ini (target 10 tes)
+    if (recentActivities.length > 0) {
+      // Set untuk menyimpan tanggal unik (YYYY-MM-DD) agar pengerjaan multiple di hari sama dihitung 1
+      const uniqueDates = new Set();
+      recentActivities.forEach((act) => {
+        if (act.tanggal) {
+          uniqueDates.add(new Date(act.tanggal).toISOString().split("T")[0]);
+        }
+      });
+
+      const sortedDates = Array.from(uniqueDates).sort().reverse(); // Urutkan dari terbaru
+
+      const todayStr = now.toISOString().split("T")[0];
+      const yesterday = new Date(now);
+      yesterday.setDate(yesterday.getDate() - 1);
+      const yesterdayStr = yesterday.toISOString().split("T")[0];
+
+      // Cek apakah streak masih aktif (belajar hari ini atau kemarin)
+      if (sortedDates[0] === todayStr || sortedDates[0] === yesterdayStr) {
+        let currentDate = new Date(sortedDates[0]);
+        streak = 1;
+
+        for (let i = 1; i < sortedDates.length; i++) {
+          const prevDate = new Date(sortedDates[i]);
+          const diffTime = Math.abs(currentDate - prevDate);
+          const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+          if (diffDays === 1) {
+            streak++;
+            currentDate = prevDate;
+          } else {
+            break;
+          }
+        }
+      }
+    }
+
     const examsThisWeek = await prisma.paketAttempt.count({
       where: {
         subscribers_id_subscriber: id_subscriber,
@@ -494,12 +522,15 @@ exports.getStreakAndTarget = async (req, res) => {
     res.status(200).json({
       status: "success",
       data: {
-        streak: streak || 10,
-        weeklyProgress,
-        weeklyTarget,
+        streak: streak,
+        weeklyProgress: weeklyProgress,
+        weeklyTarget: weeklyTarget,
+        message:
+          streak > 0 ? "Streak terjaga! 🔥" : "Ayo mulai belajar hari ini!",
       },
     });
   } catch (error) {
+    console.error("Error streak:", error);
     res.status(500).json({ status: "error", message: error.message });
   }
 };
@@ -558,9 +589,13 @@ exports.getAllPaketsWithProgress = async (req, res) => {
 
       return {
         id: paket.id_paket_soal,
+        id_paket_soal: paket.id_paket_soal,
         label: paket.nama_paket,
+        nama_paket: paket.nama_paket,
         image: paket.image || "/person.jpg",
         progress: { answered, totalSoal },
+        soal_count: totalSoal,
+        totalSoal: totalSoal,
         category: paket.category?.nama_category || "Umum",
       };
     });
@@ -575,7 +610,7 @@ exports.getAllPaketsWithProgress = async (req, res) => {
   }
 };
 
-// 10. GET PAKET DETAIL BY ID
+// 10. GET PAKET DETAIL BY ID (untuk halaman DetailExam)
 exports.getPaketDetailById = async (req, res) => {
   try {
     const id_subscriber = req.user.id;
@@ -591,9 +626,13 @@ exports.getPaketDetailById = async (req, res) => {
             soal: {
               include: {
                 topic: { include: { subject: true, jenjang: true } },
+                jawaban: {
+                  orderBy: { id_jawaban: "asc" },
+                },
               },
             },
           },
+          orderBy: { id_soal_paket_soal: "asc" },
         },
         paketAttempt: {
           where: { subscribers_id_subscriber: id_subscriber },
@@ -614,16 +653,48 @@ exports.getPaketDetailById = async (req, res) => {
     const attempt = paket.paketAttempt[0];
     const answered = attempt ? attempt.history.length : 0;
 
+    // Helper untuk mendapatkan jawaban benar
+    const getCorrectAnswer = (jawaban) => {
+      const correctAnswerObj = jawaban.find((j) => j.status === true);
+      if (!correctAnswerObj) return "a";
+      const index = jawaban.indexOf(correctAnswerObj);
+      return String.fromCharCode(97 + index);
+    };
+
     const formattedData = {
-      id: paket.id_paket_soal,
+      id_paket_soal: paket.id_paket_soal,
+      label: paket.nama_paket,
       nama_paket: paket.nama_paket,
       deskripsi: paket.deskripsi,
       image: paket.image,
       category: paket.category?.nama_category || "Umum",
       creator: paket.creator?.nama_user || "Admin",
       jenis: paket.jenis,
-      progress: { answered, totalSoal },
       soal_count: totalSoal,
+      progress: { answered, totalSoal },
+      soal_paket_soal: paket.soalPaket.map((sp) => ({
+        id_soal_paket_soal: sp.id_soal_paket_soal,
+        id_soal: sp.id_soal,
+        id_paket_soal: sp.id_paket_soal,
+        point: sp.point,
+        durasi: sp.durasi,
+        soal: {
+          id_soal: sp.soal.id_soal,
+          text_soal: sp.soal.text_soal,
+          jenis_soal: sp.soal.jenis_soal,
+          level_kesulitan: sp.soal.level_kesulitan,
+          option_a: sp.soal.jawaban[0]?.opsi_jawaban_text || "",
+          option_b: sp.soal.jawaban[1]?.opsi_jawaban_text || "",
+          option_c: sp.soal.jawaban[2]?.opsi_jawaban_text || "",
+          option_d: sp.soal.jawaban[3]?.opsi_jawaban_text || "",
+          option_e: sp.soal.jawaban[4]?.opsi_jawaban_text || "",
+          jawaban_benar: getCorrectAnswer(sp.soal.jawaban),
+          deskripsi: sp.soal.jawaban[0]?.pembahasan || "",
+          topic: sp.soal.topic?.nama_topics,
+          subject: sp.soal.topic?.subject?.nama_subject,
+          jenjang: sp.soal.topic?.jenjang?.nama_jenjang,
+        },
+      })),
     };
 
     res.status(200).json({
@@ -631,6 +702,185 @@ exports.getPaketDetailById = async (req, res) => {
       data: formattedData,
     });
   } catch (error) {
+    res.status(500).json({ status: "error", message: error.message });
+  }
+};
+
+// Tambahkan di subscriberController.js
+
+exports.saveExamProgress = async (req, res) => {
+  try {
+    const id_subscriber = req.user.id;
+    const { id_paket_soal, answers } = req.body;
+
+    // 1. Cari atau buat PaketAttempt aktif
+    let attempt = await prisma.paketAttempt.findFirst({
+      where: {
+        paket_soal_id_paket_soal: parseInt(id_paket_soal),
+        subscribers_id_subscriber: id_subscriber,
+        finished_at: null,
+      },
+    });
+
+    if (!attempt) {
+      attempt = await prisma.paketAttempt.create({
+        data: {
+          paket_soal_id_paket_soal: parseInt(id_paket_soal),
+          subscribers_id_subscriber: id_subscriber,
+          started_at: new Date(),
+        },
+      });
+    }
+
+    // 2. Ambil semua relasi soal dan jawaban untuk validasi ID
+    const soalRelasi = await prisma.soalPaketSoal.findMany({
+      where: { id_paket_soal: parseInt(id_paket_soal) },
+      orderBy: { id_soal_paket_soal: "asc" },
+      include: { soal: { include: { jawaban: true } } },
+    });
+
+    // 3. Bersihkan history lama untuk pengerjaan ini agar fresh
+    await prisma.historyPengerjaanPaket.deleteMany({
+      where: { id_paket_attempt: attempt.id_paket_attempt },
+    });
+
+    // 4. Mapping jawaban ke ID Database yang benar
+    const historyEntries = [];
+    for (const [index, userValue] of Object.entries(answers)) {
+      const relasi = soalRelasi[parseInt(index)];
+      if (relasi) {
+        // Cari ID jawaban berdasarkan teks yang diklik user
+        const jawabanDitemukan = relasi.soal.jawaban.find(
+          (j) => j.opsi_jawaban_text === userValue,
+        );
+
+        if (jawabanDitemukan) {
+          historyEntries.push({
+            id_subscriber,
+            id_paket_attempt: attempt.id_paket_attempt,
+            id_soal_paket_soal: relasi.id_soal_paket_soal,
+            id_jawaban: jawabanDitemukan.id_jawaban,
+            short_answer: String(userValue),
+            tanggal: new Date(),
+          });
+        }
+      }
+    }
+
+    if (historyEntries.length > 0) {
+      await prisma.historyPengerjaanPaket.createMany({ data: historyEntries });
+    }
+
+    res
+      .status(200)
+      .json({ status: "success", message: "Progres berhasil disinkronkan" });
+  } catch (error) {
+    console.error("Save Progress Error:", error);
+    res.status(500).json({ status: "error", message: error.message });
+  }
+};
+
+exports.submitExam = async (req, res) => {
+  try {
+    const id_subscriber = req.user.id;
+    const { id_paket_soal, answers } = req.body;
+
+    // 1. Cari atau buat PaketAttempt yang aktif (finished_at = null)
+    let attempt = await prisma.paketAttempt.findFirst({
+      where: {
+        paket_soal_id_paket_soal: parseInt(id_paket_soal),
+        subscribers_id_subscriber: id_subscriber,
+        finished_at: null,
+      },
+    });
+
+    if (!attempt) {
+      attempt = await prisma.paketAttempt.create({
+        data: {
+          paket_soal_id_paket_soal: parseInt(id_paket_soal),
+          subscribers_id_subscriber: id_subscriber,
+          started_at: new Date(),
+        },
+      });
+    }
+
+    // 2. Ambil relasi soal untuk mapping index frontend ke ID database
+    const soalRelasi = await prisma.soalPaketSoal.findMany({
+      where: { id_paket_soal: parseInt(id_paket_soal) },
+      orderBy: { id_soal_paket_soal: "asc" },
+      include: {
+        soal: {
+          include: { jawaban: true },
+        },
+      },
+    });
+
+    // 3. Bersihkan history lama untuk pengerjaan ini agar data tidak double/duplikat
+    await prisma.historyPengerjaanPaket.deleteMany({
+      where: { id_paket_attempt: attempt.id_paket_attempt },
+    });
+
+    // --- LOGIKA UTAMA YANG KAMU BERIKAN ---
+    const historyEntries = [];
+    let correctCount = 0;
+
+    for (const [index, userValue] of Object.entries(answers)) {
+      const relasi = soalRelasi[parseInt(index)];
+      if (relasi) {
+        const jawabanDitemukan = relasi.soal.jawaban.find(
+          (j) => j.opsi_jawaban_text === userValue,
+        );
+        if (jawabanDitemukan) {
+          // Hitung benar di sini secara sinkron agar akurat
+          if (jawabanDitemukan.status === true) correctCount++;
+
+          historyEntries.push({
+            id_subscriber,
+            id_paket_attempt: attempt.id_paket_attempt,
+            id_soal_paket_soal: relasi.id_soal_paket_soal,
+            id_jawaban: jawabanDitemukan.id_jawaban,
+            short_answer: String(userValue),
+            tanggal: new Date(),
+          });
+        }
+      }
+    }
+    // --------------------------------------
+
+    // 4. Simpan semua history baru secara massal
+    if (historyEntries.length > 0) {
+      await prisma.historyPengerjaanPaket.createMany({
+        data: historyEntries,
+      });
+    }
+
+    // 5. Kalkulasi skor akhir (Skala 100)
+    const totalSoalDalamPaket = soalRelasi.length;
+    const finalScore =
+      totalSoalDalamPaket > 0
+        ? Math.round((correctCount / totalSoalDalamPaket) * 100)
+        : 0;
+
+    // 6. Finalisasi: Tandai pengerjaan telah selesai (set finished_at)
+    await prisma.paketAttempt.update({
+      where: { id_paket_attempt: attempt.id_paket_attempt },
+      data: { finished_at: new Date() },
+    });
+
+    // 7. Kirim data hasil ke Frontend
+    res.status(200).json({
+      status: "success",
+      message: "Ujian berhasil dikumpulkan",
+      data: {
+        score: finalScore,
+        correct: correctCount,
+        wrong: historyEntries.length - correctCount,
+        unanswered: totalSoalDalamPaket - historyEntries.length,
+        totalSoal: totalSoalDalamPaket,
+      },
+    });
+  } catch (error) {
+    console.error("Submit Exam Error:", error);
     res.status(500).json({ status: "error", message: error.message });
   }
 };
