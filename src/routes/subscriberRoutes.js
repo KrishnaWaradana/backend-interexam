@@ -89,8 +89,6 @@ router.get(
   subscriberController.getPaketDetailById,
 );
 
-// --- RUTE BARU UNTUK PROGRES & SUBMIT ---
-
 // 11. SAVE PROGRESS (Simpan jawaban sementara saat user 'Kembali' atau pindah soal)
 router.post(
   "/pakets/save-progress",
@@ -105,6 +103,20 @@ router.post(
   authenticateToken,
   isSubscriber,
   subscriberController.submitExam,
+);
+
+router.get(
+  "/pakets/:id/leaderboard",
+  authenticateToken,
+  isSubscriber,
+  subscriberController.getExamLeaderboard,
+);
+
+router.get(
+  "/statistics/progress",
+  authenticateToken,
+  isSubscriber,
+  subscriberController.getProgressAnalytics,
 );
 
 module.exports = router;

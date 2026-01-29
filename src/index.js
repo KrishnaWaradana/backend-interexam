@@ -21,6 +21,7 @@ const bankSoalRoutes = require("./routes/BankSoalRoutes");
 const subTopicRoutes = require("./routes/subTopikRoutes");
 const categoryRoutes = require("./routes/categoryRoutes");
 const subscriberRoutes = require("./routes/subscriberRoutes");
+const landingRoutes = require("./routes/landingRoutes");
 
 // MIDDLEWARE WAJIB
 app.use(express.json({ limit: "10mb" }));
@@ -60,6 +61,8 @@ app.use("/api/v1/bank-soal", bankSoalRoutes);
 // F. SUBSCRIBER ROUTES
 // Endpoint untuk subscriber: favorites, bank soal subscriber, dll
 app.use("/api/v1/subscriber", subscriberRoutes);
+
+app.use("/api/v1/landing", landingRoutes);
 
 // Jalan untuk ambil data Jenjang & Subject
 app.use("/api/v1/contributor/lookup", contributorLookupRoutes);

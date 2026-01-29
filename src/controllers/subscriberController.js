@@ -1,7 +1,7 @@
 const { PrismaClient } = require("@prisma/client");
 const prisma = new PrismaClient();
 
-// 1. GET BANK SOAL UNTUK SUBSCRIBER (untuk halaman Simpan)
+// GET BANK SOAL UNTUK SUBSCRIBER (untuk halaman Simpan)
 exports.getSubscriberBankSoal = async (req, res) => {
   try {
     const {
@@ -36,7 +36,6 @@ exports.getSubscriberBankSoal = async (req, res) => {
 
     const skip = (parseInt(page) - 1) * parseInt(limit);
 
-    // Ambil soal dan cek apakah sudah difavoritkan
     const [soalList, total] = await prisma.$transaction([
       prisma.soal.findMany({
         where: whereClause,
@@ -51,7 +50,6 @@ exports.getSubscriberBankSoal = async (req, res) => {
       prisma.soal.count({ where: whereClause }),
     ]);
 
-    // Format response dengan status favorit
     const formattedData = soalList.map((item) => ({
       id: item.id_soal,
       nama_soal: item.text_soal,
@@ -73,7 +71,7 @@ exports.getSubscriberBankSoal = async (req, res) => {
   }
 };
 
-// 2. GET FAVORIT SOAL (LIST SOAL YANG SUDAH DISIMPAN)
+// GET FAVORIT SOAL (LIST SOAL YANG SUDAH DISIMPAN)
 exports.getSubscriberFavorites = async (req, res) => {
   try {
     const id_subscriber = req.user.id;
@@ -152,7 +150,7 @@ exports.getSubscriberFavorites = async (req, res) => {
   }
 };
 
-// 3. SAVE SOAL KE FAVORITES
+// SAVE SOAL KE FAVORITES
 exports.saveToFavorites = async (req, res) => {
   try {
     const id_subscriber = req.user.id;
@@ -164,7 +162,6 @@ exports.saveToFavorites = async (req, res) => {
         .json({ status: "error", message: "ID soal wajib diisi" });
     }
 
-    // Cek apakah soal sudah ada di favorites
     const existingFavorite = await prisma.favorites.findFirst({
       where: {
         id_subscriber: id_subscriber,
@@ -179,7 +176,6 @@ exports.saveToFavorites = async (req, res) => {
       });
     }
 
-    // Cek apakah soal ada dan disetujui
     const soal = await prisma.soal.findUnique({
       where: { id_soal: parseInt(id_soal) },
     });
@@ -197,7 +193,6 @@ exports.saveToFavorites = async (req, res) => {
       });
     }
 
-    // Simpan ke favorites
     const newFavorite = await prisma.favorites.create({
       data: {
         id_subscriber: id_subscriber,
@@ -216,13 +211,12 @@ exports.saveToFavorites = async (req, res) => {
   }
 };
 
-// 4. HAPUS SOAL DARI FAVORITES
+// HAPUS SOAL DARI FAVORITES
 exports.removeFromFavorites = async (req, res) => {
   try {
     const id_subscriber = req.user.id;
     const { id_soal } = req.params;
 
-    // Cek apakah soal ada di favorites subscriber
     const favorite = await prisma.favorites.findFirst({
       where: {
         id_subscriber: id_subscriber,
@@ -237,7 +231,6 @@ exports.removeFromFavorites = async (req, res) => {
       });
     }
 
-    // Hapus dari favorites
     await prisma.favorites.delete({
       where: { id_favorite: favorite.id_favorite },
     });
@@ -251,7 +244,7 @@ exports.removeFromFavorites = async (req, res) => {
   }
 };
 
-// 5. TOGGLE FAVORITE (SIMPAN/HAPUS)
+// TOGGLE FAVORITE (SIMPAN/HAPUS)
 exports.toggleFavorite = async (req, res) => {
   try {
     const id_subscriber = req.user.id;
@@ -263,7 +256,6 @@ exports.toggleFavorite = async (req, res) => {
         .json({ status: "error", message: "ID soal wajib diisi" });
     }
 
-    // Cek apakah sudah ada di favorites
     const existingFavorite = await prisma.favorites.findFirst({
       where: {
         id_subscriber: id_subscriber,
@@ -272,7 +264,6 @@ exports.toggleFavorite = async (req, res) => {
     });
 
     if (existingFavorite) {
-      // Jika sudah ada, hapus
       await prisma.favorites.delete({
         where: { id_favorite: existingFavorite.id_favorite },
       });
@@ -282,7 +273,6 @@ exports.toggleFavorite = async (req, res) => {
         data: { is_favorited: false },
       });
     } else {
-      // Jika belum ada, simpan
       const soal = await prisma.soal.findUnique({
         where: { id_soal: parseInt(id_soal) },
       });
@@ -319,7 +309,7 @@ exports.toggleFavorite = async (req, res) => {
   }
 };
 
-// 6. GET RECENT PAKETS (untuk dashboard home - 4 paket terbaru dengan progress)
+// GET RECENT PAKETS
 exports.getRecentPakets = async (req, res) => {
   try {
     const id_subscriber = req.user.id;
@@ -338,7 +328,7 @@ exports.getRecentPakets = async (req, res) => {
           where: { subscribers_id_subscriber: id_subscriber },
           include: { history: true },
           orderBy: { started_at: "desc" },
-          take: 1, // Ambil attempt terbaru
+          take: 1,
         },
       },
       orderBy: { tanggal_dibuat: "desc" },
@@ -373,7 +363,7 @@ exports.getStatisticsSummary = async (req, res) => {
     const now = new Date();
     const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000); // 7 hari lalu
 
-    // 1. Total ujian selesai (sepanjang waktu)
+    // Total ujian selesai
     const totalExams = await prisma.paketAttempt.count({
       where: {
         subscribers_id_subscriber: id_subscriber,
@@ -381,7 +371,7 @@ exports.getStatisticsSummary = async (req, res) => {
       },
     });
 
-    // 2. Ujian selesai minggu ini (untuk tren)
+    // Ujian selesai minggu ini (untuk perbandingan tren)
     const examsThisWeek = await prisma.paketAttempt.count({
       where: {
         subscribers_id_subscriber: id_subscriber,
@@ -389,20 +379,58 @@ exports.getStatisticsSummary = async (req, res) => {
       },
     });
 
-    // 3. Rata-rata Skor
+    // --- HITUNG XP & LEVEL (GAMIFICATION) ---
+    const xpResult = await prisma.historyPengerjaanPaket.aggregate({
+      _sum: {
+        skor_point: true,
+      },
+      where: {
+        id_subscriber: id_subscriber,
+      },
+    });
+
+    // Total XP User saat ini (Jika null set 0)
+    const currentXP = xpResult._sum.skor_point || 0;
+
+    // Konfigurasi Level
+    const XP_PER_LEVEL = 500;
+
+    // Hitung Level: (XP / 500) dibulatkan ke bawah, ditambah 1.
+    // Contoh: 0-499 XP = Level 1. 500-999 XP = Level 2.
+    const currentLevel = Math.floor(currentXP / XP_PER_LEVEL) + 1;
+
+    // Hitung Progress Bar di level saat ini
+    const startXPThisLevel = (currentLevel - 1) * XP_PER_LEVEL;
+    const xpProgress = currentXP - startXPThisLevel;
+    const percentage = Math.min(
+      100,
+      Math.round((xpProgress / XP_PER_LEVEL) * 100),
+    );
+
+    // Tentukan Label Pangkat berdasarkan Level
+    let levelLabel = "Pemula";
+    if (currentLevel >= 5) levelLabel = "Pejuang";
+    if (currentLevel >= 10) levelLabel = "Sepuh";
+    if (currentLevel >= 20) levelLabel = "Master";
+    if (currentLevel >= 50) levelLabel = "Legenda";
+
+    const totalHistoryItems = await prisma.historyPengerjaanPaket.count({
+      where: { id_subscriber: id_subscriber },
+    });
+
+    const totalMinutes = totalHistoryItems * 2;
+    const hours = Math.floor(totalMinutes / 60);
+    const minutes = totalMinutes % 60;
+
     const completedAttempts = await prisma.paketAttempt.findMany({
       where: {
         subscribers_id_subscriber: id_subscriber,
         finished_at: { not: null },
       },
       include: {
-        paketSoal: {
-          include: { soalPaket: true }, // Untuk tahu total soal
-        },
+        paketSoal: { include: { soalPaket: true } },
         history: {
-          include: {
-            jawabanSoal: { select: { status: true } }, // Cek status jawaban benar/salah
-          },
+          include: { jawabanSoal: { select: { status: true } } },
         },
       },
       orderBy: { finished_at: "desc" },
@@ -413,6 +441,7 @@ exports.getStatisticsSummary = async (req, res) => {
     if (completedAttempts.length > 0) {
       const scores = completedAttempts.map((attempt) => {
         const totalQuestions = attempt.paketSoal.soalPaket.length || 1;
+        // Hitung jumlah benar manual dari history
         const correctAnswers = attempt.history.filter(
           (h) => h.jawabanSoal?.status === true,
         ).length;
@@ -420,32 +449,39 @@ exports.getStatisticsSummary = async (req, res) => {
         return (correctAnswers / totalQuestions) * 100;
       });
 
-      // Hitung rata-rata dari array skor
-      const totalScore = scores.reduce((a, b) => a + b, 0);
-      avgScore = Math.round(totalScore / scores.length);
+      const totalScoreSum = scores.reduce((a, b) => a + b, 0);
+      avgScore = Math.round(totalScoreSum / scores.length);
     }
 
-    // Total waktu belajar
-    const totalHistoryItems = await prisma.historyPengerjaanPaket.count({
-      where: { id_subscriber: id_subscriber },
-    });
-
-    const totalMinutes = totalHistoryItems * 2;
-    const hours = Math.floor(totalMinutes / 60);
-    const minutes = totalMinutes % 60;
-
+    // --- RESPONSE  ---
     res.status(200).json({
       status: "success",
       data: {
-        // Data Utama
         totalExamsCompleted: totalExams,
-        averageScore: avgScore, // Number (misal: 85)
-        totalStudyTime: `${hours}j ${minutes}m`,
 
+        // Data Waktu Belajar
+        studyTime: {
+          hours,
+          minutes,
+          fullText: `${hours} jam ${minutes} menit`,
+        },
+
+        // Data Level & XP
+        experience: {
+          level: currentLevel,
+          label: levelLabel,
+          currentXP: xpProgress,
+          maxXP: XP_PER_LEVEL,
+          totalXP: currentXP,
+          percentage: percentage,
+        },
+
+        // Data Skor (Card Oranye)
+        averageScore: avgScore,
+
+        // Data Tren
         comparedToPreviousWeek: {
           exams: Math.max(0, examsThisWeek),
-          scoreIncrease: 5,
-          studyTimeIncrease: 20,
         },
       },
     });
@@ -455,20 +491,19 @@ exports.getStatisticsSummary = async (req, res) => {
   }
 };
 
-// 8. GET STREAK & WEEKLY TARGET (untuk dashboard - rekor belajar mingguan)
+// GET STREAK & WEEKLY TARGET (untuk dashboard - rekor belajar mingguan)
 exports.getStreakAndTarget = async (req, res) => {
   try {
     const id_subscriber = req.user.id;
     const now = new Date();
     const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
 
-    // --- 1. Hitung Streak (Hari berturut-turut belajar) ---
-    // Ambil tanggal pengerjaan unik berdasarkan hari
+    // --- Hitung Streak (Hari berturut-turut belajar) ---
     const recentActivities = await prisma.historyPengerjaanPaket.findMany({
       where: { id_subscriber: id_subscriber },
       select: { tanggal: true },
       orderBy: { tanggal: "desc" },
-      take: 60, // Ambil cukup banyak untuk cek streak
+      take: 60,
     });
 
     let streak = 0;
@@ -482,7 +517,7 @@ exports.getStreakAndTarget = async (req, res) => {
         }
       });
 
-      const sortedDates = Array.from(uniqueDates).sort().reverse(); // Urutkan dari terbaru
+      const sortedDates = Array.from(uniqueDates).sort().reverse();
 
       const todayStr = now.toISOString().split("T")[0];
       const yesterday = new Date(now);
@@ -535,7 +570,7 @@ exports.getStreakAndTarget = async (req, res) => {
   }
 };
 
-// 9. GET ALL PAKETS WITH PROGRESS (untuk halaman course dengan filter/sort)
+// GET ALL PAKETS WITH PROGRESS (untuk halaman course dengan filter/sort)
 exports.getAllPaketsWithProgress = async (req, res) => {
   try {
     const id_subscriber = req.user.id;
@@ -556,7 +591,7 @@ exports.getAllPaketsWithProgress = async (req, res) => {
     }
 
     const skip = (parseInt(page) - 1) * parseInt(limit);
-    let orderBy = { tanggal_dibuat: "desc" }; // default newest
+    let orderBy = { tanggal_dibuat: "desc" };
 
     if (sortBy === "oldest") {
       orderBy = { tanggal_dibuat: "asc" };
@@ -568,6 +603,7 @@ exports.getAllPaketsWithProgress = async (req, res) => {
         include: {
           category: true,
           soalPaket: true,
+          _count: { select: { paketAttempt: true } },
           paketAttempt: {
             where: { subscribers_id_subscriber: id_subscriber },
             include: { history: { select: { id_jawaban: true } } },
@@ -594,6 +630,7 @@ exports.getAllPaketsWithProgress = async (req, res) => {
         nama_paket: paket.nama_paket,
         image: paket.image || "/person.jpg",
         progress: { answered, totalSoal },
+        participants: paket._count.paketAttempt || 0,
         soal_count: totalSoal,
         totalSoal: totalSoal,
         category: paket.category?.nama_category || "Umum",
@@ -610,7 +647,7 @@ exports.getAllPaketsWithProgress = async (req, res) => {
   }
 };
 
-// 10. GET PAKET DETAIL BY ID (untuk halaman DetailExam)
+// GET PAKET DETAIL BY ID
 exports.getPaketDetailById = async (req, res) => {
   try {
     const id_subscriber = req.user.id;
@@ -706,14 +743,13 @@ exports.getPaketDetailById = async (req, res) => {
   }
 };
 
-// Tambahkan di subscriberController.js
-
+// Save Exam Progress
 exports.saveExamProgress = async (req, res) => {
   try {
     const id_subscriber = req.user.id;
     const { id_paket_soal, answers } = req.body;
 
-    // 1. Cari atau buat PaketAttempt aktif
+    // Cari atau buat PaketAttempt aktif
     let attempt = await prisma.paketAttempt.findFirst({
       where: {
         paket_soal_id_paket_soal: parseInt(id_paket_soal),
@@ -732,19 +768,19 @@ exports.saveExamProgress = async (req, res) => {
       });
     }
 
-    // 2. Ambil semua relasi soal dan jawaban untuk validasi ID
+    // Ambil semua relasi soal dan jawaban untuk validasi ID
     const soalRelasi = await prisma.soalPaketSoal.findMany({
       where: { id_paket_soal: parseInt(id_paket_soal) },
       orderBy: { id_soal_paket_soal: "asc" },
       include: { soal: { include: { jawaban: true } } },
     });
 
-    // 3. Bersihkan history lama untuk pengerjaan ini agar fresh
+    // Bersihkan history lama untuk pengerjaan ini agar fresh
     await prisma.historyPengerjaanPaket.deleteMany({
       where: { id_paket_attempt: attempt.id_paket_attempt },
     });
 
-    // 4. Mapping jawaban ke ID Database yang benar
+    // Mapping jawaban ke ID Database yang benar
     const historyEntries = [];
     for (const [index, userValue] of Object.entries(answers)) {
       const relasi = soalRelasi[parseInt(index)];
@@ -780,12 +816,12 @@ exports.saveExamProgress = async (req, res) => {
   }
 };
 
+// Sumbit Exam
 exports.submitExam = async (req, res) => {
   try {
     const id_subscriber = req.user.id;
     const { id_paket_soal, answers } = req.body;
 
-    // 1. Cari atau buat PaketAttempt yang aktif (finished_at = null)
     let attempt = await prisma.paketAttempt.findFirst({
       where: {
         paket_soal_id_paket_soal: parseInt(id_paket_soal),
@@ -804,7 +840,6 @@ exports.submitExam = async (req, res) => {
       });
     }
 
-    // 2. Ambil relasi soal untuk mapping index frontend ke ID database
     const soalRelasi = await prisma.soalPaketSoal.findMany({
       where: { id_paket_soal: parseInt(id_paket_soal) },
       orderBy: { id_soal_paket_soal: "asc" },
@@ -815,24 +850,28 @@ exports.submitExam = async (req, res) => {
       },
     });
 
-    // 3. Bersihkan history lama untuk pengerjaan ini agar data tidak double/duplikat
     await prisma.historyPengerjaanPaket.deleteMany({
       where: { id_paket_attempt: attempt.id_paket_attempt },
     });
 
-    // --- LOGIKA UTAMA YANG KAMU BERIKAN ---
     const historyEntries = [];
     let correctCount = 0;
+    const POIN_PER_SOAL = 10;
 
     for (const [index, userValue] of Object.entries(answers)) {
       const relasi = soalRelasi[parseInt(index)];
+
       if (relasi) {
         const jawabanDitemukan = relasi.soal.jawaban.find(
           (j) => j.opsi_jawaban_text === userValue,
         );
+
         if (jawabanDitemukan) {
-          // Hitung benar di sini secara sinkron agar akurat
-          if (jawabanDitemukan.status === true) correctCount++;
+          const isCorrect = jawabanDitemukan.status === true;
+
+          const earnedPoint = isCorrect ? POIN_PER_SOAL : 0;
+
+          if (isCorrect) correctCount++;
 
           historyEntries.push({
             id_subscriber,
@@ -841,33 +880,28 @@ exports.submitExam = async (req, res) => {
             id_jawaban: jawabanDitemukan.id_jawaban,
             short_answer: String(userValue),
             tanggal: new Date(),
+            skor_point: parseFloat(earnedPoint),
           });
         }
       }
     }
-    // --------------------------------------
 
-    // 4. Simpan semua history baru secara massal
     if (historyEntries.length > 0) {
       await prisma.historyPengerjaanPaket.createMany({
         data: historyEntries,
       });
     }
 
-    // 5. Kalkulasi skor akhir (Skala 100)
-    const totalSoalDalamPaket = soalRelasi.length;
-    const finalScore =
-      totalSoalDalamPaket > 0
-        ? Math.round((correctCount / totalSoalDalamPaket) * 100)
-        : 0;
+    const totalSoal = soalRelasi.length;
 
-    // 6. Finalisasi: Tandai pengerjaan telah selesai (set finished_at)
+    const finalScore =
+      totalSoal > 0 ? Math.round((correctCount / totalSoal) * 100) : 0;
+
     await prisma.paketAttempt.update({
       where: { id_paket_attempt: attempt.id_paket_attempt },
       data: { finished_at: new Date() },
     });
 
-    // 7. Kirim data hasil ke Frontend
     res.status(200).json({
       status: "success",
       message: "Ujian berhasil dikumpulkan",
@@ -875,12 +909,297 @@ exports.submitExam = async (req, res) => {
         score: finalScore,
         correct: correctCount,
         wrong: historyEntries.length - correctCount,
-        unanswered: totalSoalDalamPaket - historyEntries.length,
-        totalSoal: totalSoalDalamPaket,
+        unanswered: totalSoal - historyEntries.length,
+        totalSoal: totalSoal,
       },
     });
   } catch (error) {
     console.error("Submit Exam Error:", error);
+    res.status(500).json({ status: "error", message: error.message });
+  }
+};
+
+// GET LEADERBOARD PER PAKET
+exports.getExamLeaderboard = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Ambil semua attempt yang sudah selesai untuk paket ini
+    const attempts = await prisma.paketAttempt.findMany({
+      where: {
+        paket_soal_id_paket_soal: parseInt(id),
+        finished_at: { not: null },
+      },
+      include: {
+        subscriber: {
+          select: {
+            nama_subscriber: true,
+            foto: true,
+          },
+        },
+        history: true,
+        paketSoal: {
+          include: { soalPaket: true },
+        },
+      },
+    });
+
+    // Format dan Hitung Skor Manual (karena skor tersimpan di history per soal)
+    const leaderboard = attempts.map((attempt) => {
+      // Hitung total skor dari kolom skor_point di history
+      const totalScore = attempt.history.reduce((acc, curr) => {
+        return acc + (curr.skor_point || 0);
+      }, 0);
+
+      const correctCount = attempt.history.filter(
+        (h) => (h.skor_point || 0) > 0,
+      ).length;
+
+      const totalSoal = attempt.paketSoal.soalPaket.length;
+
+      return {
+        id: attempt.subscribers_id_subscriber,
+        name: attempt.subscriber.nama_subscriber || "User",
+        avatar: attempt.subscriber.foto || null,
+        correct: correctCount,
+        total: totalSoal,
+        score: Math.round(totalScore),
+        finished_at: attempt.finished_at,
+      };
+    });
+
+    leaderboard.sort((a, b) => {
+      if (b.score !== a.score) {
+        return b.score - a.score;
+      }
+      return new Date(a.finished_at) - new Date(b.finished_at);
+    });
+
+    const topTen = leaderboard.slice(0, 10);
+
+    res.status(200).json({
+      status: "success",
+      data: topTen,
+    });
+  } catch (error) {
+    console.error("Leaderboard Error:", error);
+    res.status(500).json({ status: "error", message: error.message });
+  }
+};
+
+// 14. GET PROGRESS ANALYTICS (Hari Ini & Mingguan)
+exports.getProgressAnalytics = async (req, res) => {
+  try {
+    const id_subscriber = req.user.id;
+    const { period = "weekly" } = req.query; // Menerima parameter 'today' atau 'weekly'
+
+    const now = new Date();
+    let startDate, endDate, prevStartDate, prevEndDate;
+    let chartLabels = [];
+    let chartData = [];
+
+    // --- A. TENTUKAN RENTANG WAKTU ---
+    if (period === "today") {
+      // --- PERIODE: HARI INI ---
+      startDate = new Date(now);
+      startDate.setHours(0, 0, 0, 0); // Jam 00:00 hari ini
+
+      endDate = new Date(now);
+      endDate.setHours(23, 59, 59, 999); // Jam 23:59 hari ini
+
+      // PEMBANDING: KEMARIN
+      prevStartDate = new Date(startDate);
+      prevStartDate.setDate(prevStartDate.getDate() - 1);
+
+      prevEndDate = new Date(endDate);
+      prevEndDate.setDate(prevEndDate.getDate() - 1);
+
+      // Label Chart untuk Hari Ini (Interval 4 jam)
+      chartLabels = ["00-04", "04-08", "08-12", "12-16", "16-20", "20-24"];
+
+      // Inisialisasi data chart (6 segmen)
+      chartData = [0, 0, 0, 0, 0, 0];
+    } else {
+      // --- PERIODE: MINGGUAN (Senin - Minggu) ---
+      const day = now.getDay();
+      const diff = now.getDate() - day + (day === 0 ? -6 : 1); // Adjust ke Senin
+
+      startDate = new Date(now);
+      startDate.setDate(diff);
+      startDate.setHours(0, 0, 0, 0);
+
+      endDate = new Date(); // Sampai detik ini
+      endDate.setHours(23, 59, 59, 999);
+
+      // PEMBANDING: MINGGU LALU
+      prevStartDate = new Date(startDate);
+      prevStartDate.setDate(prevStartDate.getDate() - 7);
+
+      prevEndDate = new Date(startDate);
+      prevEndDate.setDate(prevEndDate.getDate() - 1);
+      prevEndDate.setHours(23, 59, 59, 999);
+
+      chartLabels = ["Sen", "Sel", "Rab", "Kam", "Jum", "Sab", "Ming"];
+
+      // Inisialisasi data chart (7 hari)
+      chartData = [0, 0, 0, 0, 0, 0, 0];
+    }
+
+    // --- B. DATA UJIAN (Card 1) ---
+    const examsCurrent = await prisma.paketAttempt.count({
+      where: {
+        subscribers_id_subscriber: id_subscriber,
+        finished_at: { gte: startDate, lte: endDate },
+      },
+    });
+
+    const examsPrev = await prisma.paketAttempt.count({
+      where: {
+        subscribers_id_subscriber: id_subscriber,
+        finished_at: { gte: prevStartDate, lte: prevEndDate },
+      },
+    });
+
+    // --- C. DATA WAKTU BELAJAR (Card 3) ---
+    // Hitung berdasarkan history soal yang dikerjakan
+    const historyCurrent = await prisma.historyPengerjaanPaket.count({
+      where: {
+        id_subscriber: id_subscriber,
+        tanggal: { gte: startDate, lte: endDate },
+      },
+    });
+
+    const historyPrev = await prisma.historyPengerjaanPaket.count({
+      where: {
+        id_subscriber: id_subscriber,
+        tanggal: { gte: prevStartDate, lte: prevEndDate },
+      },
+    });
+
+    const timeCurrentMinutes = historyCurrent * 2; // Asumsi 1 soal = 2 menit
+    const timePrevMinutes = historyPrev * 2;
+
+    // --- D. DATA RATA-RATA SKOR (Card 2) ---
+    const calculateAvgScore = async (start, end) => {
+      const attempts = await prisma.paketAttempt.findMany({
+        where: {
+          subscribers_id_subscriber: id_subscriber,
+          finished_at: { gte: start, lte: end },
+        },
+        include: {
+          history: { select: { skor_point: true } },
+          paketSoal: { include: { soalPaket: true } },
+        },
+      });
+
+      if (attempts.length === 0) return 0;
+
+      let totalPercentage = 0;
+      attempts.forEach((att) => {
+        // Hitung skor total paket (jika point tidak ada, default 10 per soal)
+        const maxScore = att.paketSoal.soalPaket.length * 10;
+        const userScore = att.history.reduce(
+          (acc, curr) => acc + (curr.skor_point || 0),
+          0,
+        );
+
+        // Prevent division by zero
+        const percentage = maxScore > 0 ? (userScore / maxScore) * 100 : 0;
+        totalPercentage += percentage;
+      });
+
+      return Math.round(totalPercentage / attempts.length);
+    };
+
+    const scoreCurrent = await calculateAvgScore(startDate, endDate);
+    const scorePrev = await calculateAvgScore(prevStartDate, prevEndDate);
+
+    // --- E. GRAFIK BATANG (Chart Data Processing) ---
+    // Ambil data history mentah untuk di-mapping ke chart
+    const rawHistory = await prisma.historyPengerjaanPaket.findMany({
+      where: {
+        id_subscriber,
+        tanggal: { gte: startDate, lte: endDate },
+      },
+      select: { tanggal: true },
+    });
+
+    if (period === "today") {
+      // Mapping per 4 jam
+      rawHistory.forEach((act) => {
+        const hour = new Date(act.tanggal).getHours();
+        if (hour < 4)
+          chartData[0] += 2; // 00-04
+        else if (hour < 8)
+          chartData[1] += 2; // 04-08
+        else if (hour < 12)
+          chartData[2] += 2; // 08-12
+        else if (hour < 16)
+          chartData[3] += 2; // 12-16
+        else if (hour < 20)
+          chartData[4] += 2; // 16-20
+        else chartData[5] += 2; // 20-24
+      });
+    } else {
+      // Mapping per Hari (Senin=0, Minggu=6)
+      rawHistory.forEach((act) => {
+        const date = new Date(act.tanggal);
+        const day = date.getDay(); // 0=Minggu, 1=Senin
+        // Ubah ke format: Senin=0 ... Minggu=6
+        const index = (day + 6) % 7;
+        chartData[index] += 2; // Tambah 2 menit
+      });
+    }
+
+    // --- F. RESPONSE ---
+    res.status(200).json({
+      status: "success",
+      data: {
+        period: period,
+        // Card 1: Ujian
+        exams: {
+          current: examsCurrent,
+          diff: examsCurrent - examsPrev,
+          label: period === "today" ? "Ujian Hari Ini" : "Ujian Minggu Ini",
+        },
+        // Card 2: Skor
+        score: {
+          current: scoreCurrent,
+          diff: scoreCurrent - scorePrev,
+        },
+        // Card 3: Waktu (Formatted)
+        studyTime: {
+          current: timeCurrentMinutes,
+          diff: timeCurrentMinutes - timePrevMinutes,
+          formatted:
+            timeCurrentMinutes >= 60
+              ? `${Math.floor(timeCurrentMinutes / 60)}j ${timeCurrentMinutes % 60}m`
+              : `${timeCurrentMinutes}m`,
+        },
+        // Chart
+        chart: {
+          labels: chartLabels,
+          data: chartData,
+          unit: "menit",
+        },
+        // Sidebar Logs (Ringkasan Otomatis)
+        logs: [
+          {
+            type: "sistem",
+            text:
+              scoreCurrent > scorePrev
+                ? `Skor rata-rata kamu naik ${scoreCurrent - scorePrev}% dibanding periode lalu.`
+                : `Skor rata-rata kamu turun ${scorePrev - scoreCurrent}% dibanding periode lalu.`,
+          },
+          {
+            type: "sistem",
+            text: `Total waktu belajar aktif: ${Math.floor(timeCurrentMinutes / 60)} jam ${timeCurrentMinutes % 60} menit.`,
+          },
+        ],
+      },
+    });
+  } catch (error) {
+    console.error("Progress Analytics Error:", error);
     res.status(500).json({ status: "error", message: error.message });
   }
 };
