@@ -53,6 +53,10 @@
         const fotoPath = req.file ? req.file.path : null;
 
         try {
+            if (!allowedRoles.includes(role)) {
+            if (fotoPath) deleteFile(fotoPath);
+            return res.status(400).json({ message: "Role tidak valid. Pilih Admin, Validator, atau Contributor." });
+            }
             // 1. VALIDASI FORM LENGKAP (WAJIB DIISI)
             // Cek apakah field penting terisi?
             if (!username || !email_user || !password || !role || !phone || !nama_user) {
@@ -171,7 +175,7 @@
     exports.updateUser = async (req, res) => {
         const userId = parseInt(req.params.id);
         // Ambil SEMUA data, termasuk password, foto, dan subject_ids
-        const { username, email_user, nama_user, role, phone, subject_ids, password } = req.body;
+        const { username, email_user, nama_user, role, phone, subject_ids, password, current_password, delete_photo } = req.body;
         
         // Check if new file uploaded
         const newFotoPath = req.file ? req.file.path : null;
@@ -186,7 +190,7 @@
             const existingUser = await prisma.users.findUnique({ where: { id_user: userId } });
             if (!existingUser) { 
                 if (newFotoPath) deleteFile(newFotoPath);
-                return res.status(404).json({ message: `User dengan ID ${userId} tidak ditemukan.` }); 
+                return res.status(404).json({ message: `User tidak ditemukan.` }); 
             }
 
             // Cek Email Unik (Jika email diubah)
@@ -210,14 +214,39 @@
             // Update Foto Logic
             if (newFotoPath) {
                 updateData.foto = newFotoPath;
-                // Hapus foto lama jika ada
-                if (existingUser.foto) deleteFile(existingUser.foto);
+            
+            if (existingUser.foto) deleteFile(existingUser.foto);
+            }else if (delete_photo === 'true') {
+            updateData.foto = null;
+            
+            // Hapus file lama fisik jika ada
+            if (existingUser.foto) deleteFile(existingUser.foto);
             }
 
             // 3. Penanganan Password (Wajib Hashing)
+            // if (password) {
+            //     const hashedPassword = await bcrypt.hash(password, 10);
+            //     updateData.password = hashedPassword;
+            // }
+
             if (password) {
-                const hashedPassword = await bcrypt.hash(password, 10);
-                updateData.password = hashedPassword;
+            // 1. Cek apakah user mengirim password lama?
+            if (!current_password) {
+                if (newFotoPath) deleteFile(newFotoPath); // Hapus foto sampah jika error
+                return res.status(400).json({ message: "Harap masukkan password lama untuk verifikasi keamanan." });
+            }
+
+            // 2. Bandingkan Password Lama dengan Database
+            const isMatch = await bcrypt.compare(current_password, existingUser.password);
+            
+            if (!isMatch) {
+                if (newFotoPath) deleteFile(newFotoPath); // Hapus foto sampah jika error
+                return res.status(401).json({ message: "Password lama salah! Perubahan ditolak." });
+            }
+
+            // 3. Jika Cocok, Hash Password BARU
+            const hashedPassword = await bcrypt.hash(password, 10);
+            updateData.password = hashedPassword;
             }
 
             // 4. Update Relasi Keahlian (DELETE-CREATE pattern)
@@ -294,7 +323,11 @@
         }
     };
     exports.getCompetencies = async (req, res) => {
-    
+        const userId = req.user ? parseInt(req.user.id) : null;
+
+        if (!userId) {
+        return res.status(401).json({ message: "Unauthorized: User ID tidak ditemukan." });
+        }
         // ⚠️ PENTING: GANTI INI NANTI
         // Logika Pengambilan ID User:
         // Asumsi: Jika Auth berhasil, ID user ada di req.user.id_user (atau req.auth.id, dsb.)
