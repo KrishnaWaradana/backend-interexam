@@ -10,6 +10,7 @@ const fs = require('fs');
 const userController = require('../controllers/userController'); 
 const subjectController = require('../controllers/subjectController');
 const paketSoalController = require('../controllers/paketSoalController'); // Pastikan file ini sudah dibuat
+const subController = require('../controllers/subscriptionController');
 
 // --- IMPORT MIDDLEWARE KEAMANAN ---
 const { authenticateToken, requireRole } = require('../middleware/authMiddleware');
@@ -88,5 +89,15 @@ router.get('/admin/subjects', authenticateToken, subjectController.getAllSubject
 router.put('/admin/subject/:id', authenticateToken, subjectController.updateSubject); 
 router.delete('/admin/subject/:id', authenticateToken, subjectController.deleteSubject);
 
+
+// =================================================================
+// Subscription
+// =================================================================
+router.post('/subscription/package', subController.createPackage); 
+router.get('/subscription/packages', subController.getAllPackages);
+router.post('/subscription/discount', subController.setDiscount);
+router.delete('/subscription/package/:id', subController.deletePackage);
+router.get('/admin/subscription/package/:id', subController.getPackageById);
+router.put('/admin/subscription/package/:id', subController.updatePackage);
 
 module.exports = router;

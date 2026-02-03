@@ -1,8 +1,5 @@
-// apps/backend/prisma/schema.prisma
-
 generator client {
   provider = "prisma-client-js"
-  // output dihapus agar import standar
 }
 
 datasource db {
@@ -10,9 +7,6 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// ==============================
-// ENUMS
-// ==============================
 
 enum Role {
   Validator
@@ -74,9 +68,6 @@ enum UserStatusEnum {
   Suspend
 }
 
-// ==============================
-// MODELS
-// ==============================
 
 model Categories {
   id_category   Int     @id @default(autoincrement())
@@ -86,9 +77,7 @@ model Categories {
   categorySubject CategorySubject[]
   paketSoal       PaketSoal[]
   paketLangganan  PaketLangganan[]
-
-  // Relasi ke Topics
-  categoryTopics CategoryTopics[]
+  categoryTopics  CategoryTopics[]
 
   @@map("categories")
 }
@@ -101,9 +90,7 @@ model Subjects {
   creator         Users?            @relation("UserSubjects", fields: [id_user], references: [id_user])
   topics          Topics[]
   categorySubject CategorySubject[]
-
-  // Relasi ke Kompetensi User
-  userKompetensi KompetensiUser[]
+  userKompetensi  KompetensiUser[]
 
   @@map("subjects")
 }
@@ -117,26 +104,19 @@ model Users {
   email_user String? @unique @db.VarChar(45)
   phone      String? @db.VarChar(45)
   googleId   String? @unique @db.VarChar(255)
-
-  // Field Foto
-  foto   String?         @db.VarChar(255)
-  status UserStatusEnum? @default(Unverified)
+  foto       String? @db.VarChar(255)
+  status     UserStatusEnum? @default(Unverified)
 
   subjectsCreated  Subjects[]  @relation("UserSubjects")
   topicsCreated    Topics[]    @relation("UserTopics")
   subTopicsCreated SubTopics[] @relation("UserSubTopics")
   jenjangCreated   Jenjang[]   @relation("UserJenjang")
-
-  soalCreated  Soal[]         @relation("UserSoal")
-  validasiSoal ValidasiSoal[]
-  paketCreated PaketSoal[]
-
-  // Relasi Status
-  statusUser  UserStatus[] @relation("UserOwner")
-  statusAdmin UserStatus[] @relation("AdminModifier")
-
-  // Relasi ke Kompetensi
-  kompetensi KompetensiUser[]
+  soalCreated      Soal[]      @relation("UserSoal")
+  validasiSoal     ValidasiSoal[]
+  paketCreated     PaketSoal[]
+  statusUser       UserStatus[] @relation("UserOwner")
+  statusAdmin      UserStatus[] @relation("AdminModifier")
+  kompetensi       KompetensiUser[]
 
   @@map("users")
 }
@@ -144,11 +124,9 @@ model Users {
 model KompetensiUser {
   id_user    Int
   id_subject Int
+  user       Users    @relation(fields: [id_user], references: [id_user])
+  subject    Subjects @relation(fields: [id_subject], references: [id_subject])
 
-  user    Users    @relation(fields: [id_user], references: [id_user])
-  subject Subjects @relation(fields: [id_subject], references: [id_subject])
-
-  // Composite Primary Key (Many-to-Many Junction)
   @@id([id_user, id_subject])
   @@map("kompetensi_user")
 }
@@ -158,25 +136,21 @@ model UserStatus {
   id_user        Int
   status         UserStatusEnum?
   id_admin       Int?
-
-  created_at  DateTime? @default(now()) @map("created_at") // Saran: Gunakan DateTime jika memungkinkan
-  description String?   @db.VarChar(45)
-
-  user  Users  @relation("UserOwner", fields: [id_user], references: [id_user])
-  admin Users? @relation("AdminModifier", fields: [id_admin], references: [id_user])
+  created_at     DateTime?       @default(now()) @map("created_at")
+  description    String?         @db.VarChar(45)
+  user           Users           @relation("UserOwner", fields: [id_user], references: [id_user])
+  admin          Users?          @relation("AdminModifier", fields: [id_admin], references: [id_user])
 
   @@map("user_status")
 }
 
 model Jenjang {
   id_jenjang   Int     @id @default(autoincrement())
-  nama_jenjang String? @db.VarChar(45) // SD, SMP, SMA, dll
+  nama_jenjang String? @db.VarChar(45)
   keterangan   String? @db.VarChar(45)
   id_user      Int?
-  creator      Users?   @relation("UserJenjang", fields: [id_user], references: [id_user])
-
-  // Relasi balik ke Topics
-  topics Topics[]
+  creator      Users?  @relation("UserJenjang", fields: [id_user], references: [id_user])
+  topics       Topics[]
 
   @@map("jenjang")
 }
@@ -189,14 +163,11 @@ model Topics {
   id_user     Int?
   creator     Users?  @relation("UserTopics", fields: [id_user], references: [id_user])
 
-  subject   Subjects    @relation(fields: [id_subjects], references: [id_subject])
-  subTopics SubTopics[]
-  soal      Soal[]
-
-  id_jenjang Int
-  jenjang    Jenjang @relation(fields: [id_jenjang], references: [id_jenjang])
-
-  // Relasi ke Categories
+  subject        Subjects         @relation(fields: [id_subjects], references: [id_subject])
+  subTopics      SubTopics[]
+  soal           Soal[]
+  id_jenjang     Int
+  jenjang        Jenjang          @relation(fields: [id_jenjang], references: [id_jenjang])
   categoryTopics CategoryTopics[]
 
   @@map("topics")
@@ -205,11 +176,9 @@ model Topics {
 model CategoryTopics {
   id_topics   Int
   id_category Int
+  topic       Topics     @relation(fields: [id_topics], references: [id_topics])
+  category    Categories @relation(fields: [id_category], references: [id_category])
 
-  topic    Topics     @relation(fields: [id_topics], references: [id_topics])
-  category Categories @relation(fields: [id_category], references: [id_category])
-
-  // Composite Primary Key
   @@id([id_topics, id_category])
   @@map("kategori_topics")
 }
@@ -260,13 +229,13 @@ model Soal {
   status              StatusSoal?
   catatan_revisi      String?         @db.Text
   id_topics           Int
-  id_subtopics        Int? // ⬅️ BENAR
-  id_detail_subtopics Int? // ⬅️ BENAR
+  id_subtopics        Int?
+  id_detail_subtopics Int?
 
   contributor    Users            @relation("UserSoal", fields: [id_contributor], references: [id_user])
   topic          Topics           @relation(fields: [id_topics], references: [id_topics])
-  subTopic       SubTopics?       @relation(fields: [id_subtopics], references: [id_subtopics]) // ⬅️ KOREKSI: TAMBAH TANDA TANYA
-  detailSubTopic DetailSubTopics? @relation(fields: [id_detail_subtopics], references: [id_detail_subtopics]) // ⬅️ KOREKSI: TAMBAH TANDA TANYA
+  subTopic       SubTopics?       @relation(fields: [id_subtopics], references: [id_subtopics])
+  detailSubTopic DetailSubTopics? @relation(fields: [id_detail_subtopics], references: [id_detail_subtopics])
 
   soalTags    SoalTags[]
   validasi    ValidasiSoal[]
@@ -311,7 +280,11 @@ model Subscribers {
   phone               String?                  @unique @db.VarChar(45)
   foto                String?                  @db.VarChar(255)
   reports             Reports[]
+  
   favorites           Favorites[]
+  
+  folders             Folders[]
+
   subscribePaket      SubscribePaket[]
   paketAttempt        PaketAttempt[]
   historyPengerjaan   HistoryPengerjaanPaket[]
@@ -337,15 +310,19 @@ model Favorites {
   id_favorite   Int         @id @default(autoincrement())
   id_subscriber Int
   id_soal       Int
-  tanggal       DateTime?
+  tanggal       DateTime?   @default(now()) // Tambahan: default now
+  
   subscriber    Subscribers @relation(fields: [id_subscriber], references: [id_subscriber])
   soal          Soal        @relation(fields: [id_soal], references: [id_soal])
+
+  id_folder     Int?        
+  folder        Folders?    @relation(fields: [id_folder], references: [id_folder], onDelete: SetNull)
 
   @@map("favorites")
 }
 
 model PaketSoal {
-  id_paket_soal  Int             @id @default(autoincrement()) // <-- PERBAIKAN: Ditambah autoincrement
+  id_paket_soal  Int             @id @default(autoincrement())
   jenis          JenisPaket?
   tanggal_dibuat DateTime?
   status         StatusPaket?
@@ -384,8 +361,8 @@ model PaketLangganan {
   masa_berlaku       Int?             @default(1)
   nama_periode       NamaPeriode?     @default(bulan)
   status             StatusPaket?     @map("status")
-  id_category        Int
-  category           Categories       @relation(fields: [id_category], references: [id_category])
+  id_category        Int?
+  category           Categories?       @relation(fields: [id_category], references: [id_category])
   diskonPaket        DiskonPaket[]
   subscribes         SubscribePaket[]
 
@@ -418,7 +395,7 @@ model SubscribePaket {
 }
 
 model PaketAttempt {
-  id_paket_attempt          Int                      @id @default(autoincrement()) // <-- PERBAIKAN: Ditambah autoincrement
+  id_paket_attempt          Int                      @id @default(autoincrement())
   paket_soal_id_paket_soal  Int
   subscribers_id_subscriber Int
   started_at                DateTime?
@@ -433,7 +410,7 @@ model PaketAttempt {
 model JawabanSoal {
   id_jawaban          Int                      @id @default(autoincrement())
   opsi_jawaban_text   String?                  @db.VarChar(100)
-  path_gambar_jawaban String?                  @db.VarChar(255) // <-- Saran: String (URL) lebih baik dari Bytes
+  path_gambar_jawaban String?                  @db.VarChar(255)
   status              Boolean?                 @default(false)
   short_answer        String?                  @db.VarChar(45)
   soal_id_soal        Int
@@ -480,11 +457,26 @@ model InstitusiTarget {
 }
 
 model SubscribersInstitusi {
-  id_institusi_subscriber Int             @id @default(autoincrement()) // <-- PERBAIKAN: Ditambah autoincrement
+  id_institusi_subscriber Int             @id @default(autoincrement())
   id_institusi            Int
   id_subscriber           Int
   institusi               InstitusiTarget @relation(fields: [id_institusi], references: [id_target])
   subscriber              Subscribers     @relation(fields: [id_subscriber], references: [id_subscriber])
 
   @@map("subscribers_insitusi")
+}
+
+model Folders {
+  id_folder     Int      @id @default(autoincrement())
+  nama_folder   String   @db.VarChar(100)
+  keterangan    String?  @db.VarChar(255)
+  created_at    DateTime @default(now())
+  updated_at    DateTime @updatedAt
+
+  id_subscriber Int
+  subscriber    Subscribers @relation(fields: [id_subscriber], references: [id_subscriber])
+
+  favorites     Favorites[]
+
+  @@map("folders")
 }
