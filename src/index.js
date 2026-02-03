@@ -33,6 +33,7 @@ app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
 
 //  DAFTAR ROUTE UTAMA (PREFIXING) 
+app.use('/api/v1/admin', adminRoutes);
 
 // Admin Routes (Contoh: /api/v1/admin/users)
 app.use('/api/v1', adminRoutes); 
