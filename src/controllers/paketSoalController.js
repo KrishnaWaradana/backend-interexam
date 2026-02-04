@@ -69,6 +69,7 @@ exports.getPaketDetail = async (req, res) => {
       image: paket.image,
       jenis: paket.jenis,
       status: paket.status,
+      id_category: paket.id_category,
       category: paket.category?.nama_category,
       soal_paket_soal: paket.soalPaket.map((sp) => ({
         id_soal_paket_soal: sp.id_soal_paket_soal,

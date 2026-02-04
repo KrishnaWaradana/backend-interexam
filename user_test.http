@@ -645,3 +645,42 @@ Content-Type: application/json
 ### 4. DELETE TOPIK (Ganti angka 1 dengan ID yang mau dihapus)
 DELETE {{baseUrl}}/topics/1
 Content-Type: application/json
+
+### ==============================================
+### PAYMENT GATEWAY TESTING
+### ==============================================
+
+### LOGIN (WAJIB)
+POST http://localhost:5000/api/v1/payment/charge
+Content-Type: application/json
+
+{
+    "id_paket_langganan": 1,
+    "id_user": 1
+}
+
+
+POST http://localhost:5000/api/v1/payment/charge
+Content-Type: application/json
+Authorization: Bearer COPAS_TOKEN_LOGIN_DISINI_TANPA_TANDA_PETIK
+
+{
+    "id_paket_langganan": 1
+}
+
+### SIMULASI NOTIFIKASI MIDTRANS (WEBHOOK)
+POST http://localhost:5000/api/v1/payment/notification
+Content-Type: application/json
+
+{
+  "transaction_time": "2026-02-04 14:00:00",
+  "transaction_status": "settlement",
+  "transaction_id": "simulasi-transaksi-id-123",
+  "status_message": "midtrans payment notification",
+  "status_code": "200",
+  "signature_key": "tidak-dicek-karena-sandbox-simulasi", 
+  "payment_type": "bank_transfer",
+  "order_id": "b9051719-e7d3-4260-b8eb-2fa27cb396f8", 
+  "gross_amount": "533333", 
+  "fraud_status": "accept"
+}
