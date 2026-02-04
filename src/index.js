@@ -22,6 +22,7 @@ const subTopicRoutes = require("./routes/subTopikRoutes");
 const categoryRoutes = require("./routes/categoryRoutes");
 const subscriberRoutes = require("./routes/subscriberRoutes");
 const landingRoutes = require("./routes/landingRoutes");
+const paymentRoutes = require('./routes/paymentRoutes');
 
 // MIDDLEWARE WAJIB
 app.use(express.json({ limit: "10mb" }));
@@ -68,6 +69,10 @@ app.use("/api/v1/contributor/lookup", contributorLookupRoutes);
 app.use("/api/v1/contributor", soalRoutes);
 
 app.use("/api/v1/subtopics", subTopicRoutes);
+
+// Route Payment
+app.use('/api/v1', paymentRoutes);
+
 
 const PORT = 5000;
 app.listen(PORT, () => {
