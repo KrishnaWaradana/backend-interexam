@@ -23,6 +23,7 @@ const categoryRoutes = require("./routes/categoryRoutes");
 const subscriberRoutes = require("./routes/subscriberRoutes");
 const landingRoutes = require("./routes/landingRoutes");
 const paymentRoutes = require("./routes/paymentRoutes");
+const workflowRoutes = require("./routes/workflowRoutes");
 
 // ==========================================
 // 1. MIDDLEWARE GLOBAL & KEAMANAN
@@ -109,6 +110,8 @@ app.use("/api/v1/contributor", soalRoutes);
 // Jika di file paymentRoutes.js isinya: router.post('/payment/charge', ...)
 // Maka URL-nya jadi: /api/v1/payment/charge
 app.use("/api/v1/payment", paymentRoutes);
+
+app.use("/api/v1/workflow", workflowRoutes);
 
 // ==========================================
 // 3. ERROR HANDLING (PENANGKAP ERROR)
