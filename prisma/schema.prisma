@@ -117,6 +117,8 @@ model Users {
   statusUser       UserStatus[] @relation("UserOwner")
   statusAdmin      UserStatus[] @relation("AdminModifier")
   kompetensi       KompetensiUser[]
+  notifReceived    SystemNotification[] @relation("NotifRecipient")
+  notifSent        SystemNotification[] @relation("NotifSender")
 
   @@map("users")
 }
@@ -500,4 +502,19 @@ model Folders {
   favorites     Favorites[]
 
   @@map("folders")
+}
+model SystemNotification {
+  id_notification Int      @id @default(autoincrement())
+  title           String   @db.Text 
+  message         String   @db.Text 
+  is_read         Boolean  @default(false)
+  created_at      DateTime @default(now())
+
+  id_recipient    Int
+  recipient       Users    @relation("NotifRecipient", fields: [id_recipient], references: [id_user])
+  
+  id_sender       Int?
+  sender          Users?   @relation("NotifSender", fields: [id_sender], references: [id_user])
+
+  @@map("system_notifications")
 }
