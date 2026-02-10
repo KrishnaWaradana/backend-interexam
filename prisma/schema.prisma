@@ -40,8 +40,8 @@ enum StatusValidasi {
 }
 
 enum JenisPaket {
-  latihan
-  try_out @map("try-out")
+  gratis
+  berbayar
 }
 
 enum StatusPaket {
@@ -327,7 +327,7 @@ model Favorites {
 
 model PaketSoal {
   id_paket_soal  Int             @id @default(autoincrement())
-  jenis          JenisPaket?
+  jenis          JenisPaket?     @default(gratis)
   tanggal_dibuat DateTime?
   status         StatusPaket?
   nama_paket     String?         @db.VarChar(100)

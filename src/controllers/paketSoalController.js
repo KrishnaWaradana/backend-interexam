@@ -20,19 +20,11 @@ exports.getAllPaket = async (req, res) => {
     const paketList = await prisma.paketSoal.findMany({
       orderBy: { id_paket_soal: "desc" },
       include: {
-        category: true, // Bisa null sekarang
+        category: true, 
         _count: { select: { soalPaket: true } },
       },
     });
-    
-    // Mapping agar Frontend menerima string "Gratis"/"Berbayar" saat GET
-    const formattedData = paketList.map(paket => ({
-        ...paket,
-        // Balikkan logic: latihan -> Gratis, try_out -> Berbayar
-        jenis_label: paket.jenis === 'try_out' ? 'Berbayar' : 'Gratis' 
-    }));
-
-    res.status(200).json({ status: "success", data: formattedData });
+    res.status(200).json({ status: "success", data: paketList });
   } catch (error) {
     res.status(500).json({ message: "Gagal mengambil data paket soal." });
   }
@@ -67,15 +59,10 @@ exports.getPaketDetail = async (req, res) => {
       nama_paket: paket.nama_paket,
       deskripsi: paket.deskripsi,
       image: paket.image,
-      
-      // LOGIC MAPPING OUTPUT KE FRONTEND
-      // Database: latihan  -> Frontend: Gratis
-      // Database: try_out  -> Frontend: Berbayar
-      jenis: paket.jenis === 'try_out' ? 'Berbayar' : 'Gratis',
-      
+      jenis: paket.jenis, // Output: "gratis" atau "berbayar"
       status: paket.status,
-      id_category: paket.id_category, // Bisa null
-      category: paket.category?.nama_category || "Event / Tanpa Kategori",
+      id_category: paket.id_category,
+      category: paket.category?.nama_category || "-", // Handle jika null
       
       soal_paket_soal: paket.soalPaket.map((sp) => ({
         id_soal_paket_soal: sp.id_soal_paket_soal,
@@ -87,13 +74,7 @@ exports.getPaketDetail = async (req, res) => {
           text_soal: sp.soal.text_soal,
           jenis_soal: sp.soal.jenis_soal,
           level_kesulitan: sp.soal.level_kesulitan,
-          option_a: sp.soal.jawaban[0]?.opsi_jawaban_text || "",
-          option_b: sp.soal.jawaban[1]?.opsi_jawaban_text || "",
-          option_c: sp.soal.jawaban[2]?.opsi_jawaban_text || "",
-          option_d: sp.soal.jawaban[3]?.opsi_jawaban_text || "",
-          option_e: sp.soal.jawaban[4]?.opsi_jawaban_text || "",
           jawaban_benar: getCorrectAnswer(sp.soal.jawaban),
-          deskripsi: sp.soal.jawaban[0]?.pembahasan || "",
           topic: sp.soal.topic?.nama_topics,
           subject: sp.soal.topic?.subject?.nama_subject,
           jenjang: sp.soal.topic?.jenjang?.nama_jenjang,
@@ -112,7 +93,7 @@ const getCorrectAnswer = (jawaban) => {
   return obj ? String.fromCharCode(97 + jawaban.indexOf(obj)) : "a";
 };
 
-// 3. GET BANK SOAL
+// 3. GET BANK SOAL (Tetap sama)
 exports.getBankSoal = async (req, res) => {
   try {
     const { search, matapelajaran, jenjang, level, page = 1, limit = 10 } = req.query;
@@ -157,69 +138,64 @@ exports.getBankSoal = async (req, res) => {
   }
 };
 
-// 4. CREATE PAKET SOAL (SIMPLIFIED LOGIC)
+// 4. CREATE PAKET SOAL (LOGIC BARU: Kategori Optional)
 exports.createPaketSoal = async (req, res) => {
   const file = req.file;
-  // Ambil ID dari req.user.id (sesuai auth Anda)
+  
+  // Auth Check
   const id_creator = req.user && req.user.id ? parseInt(req.user.id) : null;
-
   if (!id_creator) {
      if (file) fs.unlinkSync(file.path);
      return res.status(401).json({ message: "Unauthorized: ID User tidak ditemukan." });
   }
 
-  // Frontend mengirim "jenis" berisi "Gratis" atau "Berbayar"
   const { nama_paket, deskripsi, jenis, status, id_category, soal_ids } = req.body;
 
   try {
     let parsedSoalIds = [];
     if (soal_ids) parsedSoalIds = typeof soal_ids === 'string' ? JSON.parse(soal_ids) : soal_ids;
 
-    // --- LOGIC MAPPING UTAMA ---
-    // Frontend: "Gratis"   -> Database: "latihan"
-    // Frontend: "Berbayar" -> Database: "try_out"
-    
-    let jenisDb = "latihan"; // Default = Gratis
+    // 1. Logic Jenis (Langsung Mapping ke Enum Baru: gratis / berbayar)
+    let jenisDb = "gratis"; 
     if (jenis) {
         const input = jenis.toLowerCase();
-        if (input === "berbayar" || input === "try_out") {
-            jenisDb = "try_out";
-        } else {
-            jenisDb = "latihan"; // Handle "gratis" atau "latihan"
-        }
+        // Frontend kirim "Berbayar" -> DB: berbayar
+        // Frontend kirim "Gratis" -> DB: gratis
+        if (input === "berbayar" || input === "try_out") jenisDb = "berbayar";
+        else jenisDb = "gratis";
     }
 
+    // 2. Logic Status
     let statusDb = "draft";
     if (status && ["active", "inactive", "draft"].includes(status.toLowerCase())) {
         statusDb = status.toLowerCase();
     }
 
-    // Category Opsional (Bisa null/undefined)
+    // 3. Logic Kategori (OPTIONAL)
+    // Jika id_category kosong/undefined, categoryInt akan null
     const categoryInt = id_category ? parseInt(id_category) : null;
 
     const result = await prisma.$transaction(async (tx) => {
-      // Siapkan object connect category hanya jika ada isinya
-      let categoryConnect = {};
-      if (categoryInt) {
-          categoryConnect = { category: { connect: { id_category: categoryInt } } };
-      }
-
-      const newPaket = await tx.paketSoal.create({
-        data: {
+      
+      // Siapkan object data untuk create
+      const createData = {
           nama_paket,
           deskripsi,
-          jenis: jenisDb,    // try_out (berbayar) atau latihan (gratis)
+          jenis: jenisDb,
           status: statusDb,
           image: file ? file.path : null,
           jumlah_soal: parsedSoalIds.length,
           tanggal_dibuat: new Date(),
-          
-          ...categoryConnect, // Spread operator: kalau null, tidak akan membuat relasi
-          
-          creator: {
-            connect: { id_user: id_creator }
-          }
-        },
+          creator: { connect: { id_user: id_creator } }
+      };
+
+      // HANYA CONNECT KATEGORI JIKA USER MEMILIH KATEGORI
+      if (categoryInt) {
+          createData.category = { connect: { id_category: categoryInt } };
+      }
+
+      const newPaket = await tx.paketSoal.create({
+        data: createData
       });
 
       if (parsedSoalIds.length > 0) {
@@ -242,7 +218,7 @@ exports.createPaketSoal = async (req, res) => {
   }
 };
 
-// 5. UPDATE PAKET SOAL
+// 5. UPDATE PAKET SOAL (Support Remove Category)
 exports.updatePaket = async (req, res) => {
   const { id } = req.params;
   const file = req.file;
@@ -267,25 +243,23 @@ exports.updatePaket = async (req, res) => {
         jumlah_soal: parsedSoalIds.length,
     };
 
-    // Mapping Update
     if (jenis) {
         const input = jenis.toLowerCase();
-        // Jika input "berbayar" atau "try_out" -> set Try Out
-        if (input === "berbayar" || input === "try_out") updateData.jenis = "try_out";
-        // Jika input "gratis" atau "latihan" -> set Latihan
-        else updateData.jenis = "latihan";
+        if (input === "berbayar" || input === "try_out") updateData.jenis = "berbayar";
+        else updateData.jenis = "gratis";
     }
 
     if (status && ["active", "inactive", "draft"].includes(status.toLowerCase())) {
         updateData.status = status.toLowerCase();
     }
 
-    // Handle Kategori Opsional
+    // LOGIC UPDATE KATEGORI
+    // 1. Jika ada ID kategori baru -> Connect
     if (id_category) {
         updateData.category = { connect: { id_category: parseInt(id_category) } };
     } 
-    // Jika user ingin menghapus kategori (dikirim null atau "null")
-    else if (id_category === null || id_category === "null") {
+    // 2. Jika dikirim null/string kosong (artinya user menghapus kategori) -> Disconnect
+    else if (id_category === null || id_category === "") {
         updateData.category = { disconnect: true };
     }
 
@@ -321,7 +295,7 @@ exports.updatePaket = async (req, res) => {
   }
 };
 
-// 6. DELETE PAKET
+// 6. DELETE PAKET (Sama)
 exports.deletePaket = async (req, res) => {
   const { id } = req.params;
   try {
