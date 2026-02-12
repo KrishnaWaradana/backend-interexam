@@ -68,6 +68,16 @@ enum UserStatusEnum {
   Suspend
 }
 
+enum StatusEvent {
+  active
+  inactive
+  draft
+}
+
+enum JenisEvent {
+  Gratis
+  Berbayar
+}
 
 model Categories {
   id_category   Int     @id @default(autoincrement())
@@ -78,6 +88,7 @@ model Categories {
   paketSoal       PaketSoal[]
   paketLangganan  PaketLangganan[]
   categoryTopics  CategoryTopics[]
+  events          Event[]
 
   @@map("categories")
 }
@@ -288,6 +299,7 @@ model Subscribers {
   folders             Folders[]
 
   transaksi           Transaksi[]
+  eventsDiikuti       EventSubscriber[]
 
   subscribePaket      SubscribePaket[]
   paketAttempt        PaketAttempt[]
@@ -341,6 +353,7 @@ model PaketSoal {
   creator        Users           @relation(fields: [id_creator], references: [id_user])
   soalPaket      SoalPaketSoal[]
   paketAttempt   PaketAttempt[]
+  eventPaket     EventPaketSoal[]
 
   @@map("paket_soal")
 }
@@ -517,4 +530,56 @@ model SystemNotification {
   sender          Users?   @relation("NotifSender", fields: [id_sender], references: [id_user])
 
   @@map("system_notifications")
+}
+
+model Event {
+  id_event          Int             @id @default(autoincrement())
+  nama_event        String          @db.VarChar(100)
+  deskripsi         String?         @db.Text
+  tanggal_mulai     DateTime
+  tanggal_selesai   DateTime
+  durasi_pengerjaan Int             @default(0) // Dalam menit
+  banner            String?         @db.VarChar(255)
+  status            StatusEvent     @default(draft)
+  jenis             JenisEvent      @default(Gratis)
+  created_at        DateTime        @default(now())
+  updated_at        DateTime        @updatedAt
+
+  // Relasi ke Kategori
+  id_category       Int
+  category          Categories      @relation(fields: [id_category], references: [id_category])
+
+  // Relasi ke Paket Soal (Many-to-Many via pivot table)
+  eventPaket        EventPaketSoal[]
+
+  // Relasi ke Pendaftar (Subscriber) - Opsional, untuk tracking siapa yang ikut
+  pendaftar         EventSubscriber[]
+
+  @@map("events")
+}
+
+model EventPaketSoal {
+  id_event_paket Int       @id @default(autoincrement())
+  id_event       Int
+  id_paket_soal  Int
+  
+  // Relasi
+  event          Event     @relation(fields: [id_event], references: [id_event], onDelete: Cascade)
+  paketSoal      PaketSoal @relation(fields: [id_paket_soal], references: [id_paket_soal], onDelete: Cascade)
+
+  @@unique([id_event, id_paket_soal]) // Mencegah duplikasi paket di event yang sama
+  @@map("event_paket_soal")
+}
+
+model EventSubscriber {
+  id_event_subscriber Int         @id @default(autoincrement())
+  id_event            Int
+  id_subscriber       Int
+  tanggal_daftar      DateTime    @default(now())
+  
+  event               Event       @relation(fields: [id_event], references: [id_event])
+  subscriber          Subscribers @relation(fields: [id_subscriber], references: [id_subscriber])
+
+  @@unique([id_event, id_subscriber]) // Satu user hanya bisa daftar 1x per event
+  @@map("event_subscribers")
 }
