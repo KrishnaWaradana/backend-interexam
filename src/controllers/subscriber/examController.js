@@ -2,7 +2,6 @@ const { PrismaClient } = require("@prisma/client");
 const prisma = new PrismaClient();
 
 // Get Paket Detail By Id
-// Get Paket Detail By Id
 exports.getPaketDetailById = async (req, res) => {
   try {
     const id_subscriber = req.user.id;
@@ -51,8 +50,9 @@ exports.getPaketDetailById = async (req, res) => {
 
     // --- LOGIKA STRATEGI NO 2 (SECURITY) ---
     // Sesuaikan string 'active' dan 'premium' dengan value di databasemu
+    const jenisPaket = paket.jenis?.toLowerCase() || "gratis";
     const isUserPremium = subscriber?.status_langganan === "active";
-    const isPaketPremium = paket.jenis === "premium";
+    const isPaketPremium = jenisPaket === "berbayar";
 
     // Jika Paket Premium TAPI User Masih Gratisan -> Sembunyikan Soal
     const shouldHideSoal = isPaketPremium && !isUserPremium;
@@ -86,7 +86,7 @@ exports.getPaketDetailById = async (req, res) => {
 
       // INI BAGIAN PENTINGNYA:
       soal_paket_soal: shouldHideSoal
-        ? [] // <--- KOSONGKAN JIKA USER TIDAK BERHAK (Kirim array kosong)
+        ? []
         : paket.soalPaket.map((sp) => ({
             id_soal_paket_soal: sp.id_soal_paket_soal,
             id_soal: sp.id_soal,

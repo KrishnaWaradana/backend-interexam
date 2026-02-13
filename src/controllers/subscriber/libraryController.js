@@ -1,4 +1,4 @@
-const { PrismaClient } = require("@prisma/client");
+const { PrismaClient, JenisPaket } = require("@prisma/client");
 const prisma = new PrismaClient();
 
 // Get Subscriber Bank Soal
@@ -386,6 +386,7 @@ exports.getAllPaketsWithProgress = async (req, res) => {
         label: paket.nama_paket,
         nama_paket: paket.nama_paket,
         image: paket.image || "/person.jpg",
+        jenis: paket.jenis,
         progress: { answered, totalSoal },
         participants: paket._count.paketAttempt || 0,
         soal_count: totalSoal,
