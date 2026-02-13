@@ -86,7 +86,7 @@ const submitSoalWithNotif = async (req, res) => {
 const rejectSoalWithNotif = async (req, res) => {
   try {
     const { id_soal, catatan_revisi } = req.body;
-    const senderId = req.user.id_user; 
+    const senderId = req.user.id; 
 
     // A. Update Status Soal & Catatan
     const updatedSoal = await prisma.soal.update({
@@ -111,6 +111,7 @@ const rejectSoalWithNotif = async (req, res) => {
       data: {
         id_recipient: contributorId,
         id_sender: senderId,
+        id_soal: parseInt(id_soal),
         title: "Perlu Revisi",
         message: safeString(`${senderName} menolak soal ${subjectName}. Cek catatan: ${catatan_revisi}`),
         is_read: false
@@ -147,7 +148,8 @@ const getUserNotifications = async (req, res) => {
       title: item.title,              
       message: item.message,          
       time: formatTimeAgo(item.created_at), 
-      read: item.is_read              
+      read: item.is_read,
+      related_id: item.id_soal
     }));
 
     return res.status(200).json({

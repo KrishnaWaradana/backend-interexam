@@ -244,6 +244,7 @@ model Soal {
   id_topics           Int
   id_subtopics        Int?
   id_detail_subtopics Int?
+  notifications       SystemNotification[]
 
   contributor    Users            @relation("UserSoal", fields: [id_contributor], references: [id_user])
   topic          Topics           @relation(fields: [id_topics], references: [id_topics])
@@ -528,6 +529,9 @@ model SystemNotification {
   
   id_sender       Int?
   sender          Users?   @relation("NotifSender", fields: [id_sender], references: [id_user])
+
+  id_soal         Int?
+  soal            Soal?    @relation(fields: [id_soal], references: [id_soal])
 
   @@map("system_notifications")
 }

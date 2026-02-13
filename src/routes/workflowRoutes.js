@@ -13,13 +13,13 @@ router.put(
   authenticateToken, 
   workflowController.markAsRead
 );
-router.put(
+router.post(
   '/submit-soal',
   authenticateToken,
   requireRole(['Contributor']), 
   workflowController.submitSoalWithNotif
 );
-router.put(
+router.post(
   '/reject-soal',
   authenticateToken,
   requireRole(['Admin', 'Validator']), 
