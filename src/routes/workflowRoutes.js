@@ -13,6 +13,11 @@ router.put(
   authenticateToken, 
   workflowController.markAsRead
 );
+router.put(
+  '/alerts/read/:id', 
+  authenticateToken, 
+  workflowController.markSingleAsRead
+);
 router.post(
   '/submit-soal',
   authenticateToken,
@@ -24,6 +29,12 @@ router.post(
   authenticateToken,
   requireRole(['Admin', 'Validator']), 
   workflowController.rejectSoalWithNotif
+);
+router.post(
+  '/approve-soal',
+  authenticateToken,
+  requireRole(['Admin', 'Validator']), 
+  workflowController.approveSoalWithNotif
 );
 
 module.exports = router;

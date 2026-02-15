@@ -84,6 +84,57 @@ exports.addEvent = async (req, res) => {
 
         res.status(201).json({ message: "Event berhasil dibuat.", data: newEvent });
 
+        // ====================================================================
+        // [LOGIKA NOTIFIKASI EVENT KE CONTRIBUTOR]
+        // ====================================================================
+        if (paketIdsArray && paketIdsArray.length > 0) {
+            try {
+                // Ambil ID Admin yang sedang login (fallback ke 1 jika undefined)
+                const adminId = req.user?.id || req.user?.id_user || 1; 
+
+                // 1. Bongkar paket dan ambil SEMUA soal beserta data Contributor-nya
+                const soalTerpilih = await prisma.soalPaketSoal.findMany({
+                    where: { id_paket_soal: { in: paketIdsArray.map(id => parseInt(id)) } },
+                    include: {
+                        soal: { include: { contributor: true } }
+                    }
+                });
+
+                // 2. Saring soal unik (Mencegah notif dobel jika 1 soal masuk di 2 paket)
+                const uniqueSoals = new Map();
+                soalTerpilih.forEach(item => {
+                    if (item.soal && item.soal.contributor && item.soal.status === 'disetujui') {
+                        uniqueSoals.set(item.soal.id_soal, item.soal);
+                    }
+                });
+
+                // 3. Rakit data notifikasi untuk masing-masing soal
+                const notifData = [];
+                uniqueSoals.forEach((soal, id_soal) => {
+                    let rawText = soal.text_soal.replace(/<[^>]+>/g, ''); 
+                    let cuplikanSoal = rawText.length > 40 ? rawText.substring(0, 40) + "..." : rawText;
+
+                    notifData.push({
+                        id_recipient: soal.contributor.id_user,
+                        id_sender: parseInt(adminId),
+                        id_event: newEvent.id_event, 
+                        id_soal: id_soal,
+                        title: "Soal Terpilih Event",
+                        message: `Selamat! Soal Anda ("${cuplikanSoal}") telah digunakan dalam Event: ${nama_event}`,
+                        is_read: false
+                    });
+                });
+
+                // 4. Tembakkan semua notifikasi sekaligus
+                if (notifData.length > 0) {
+                    await prisma.systemNotification.createMany({ data: notifData });
+                }
+            } catch (notifErr) {
+                console.error("Gagal mengirim notif event ke contributor:", notifErr);
+            }
+        }
+        // ====================================================================
+
     } catch (error) {
         if (bannerPath) deleteFile(bannerPath);
         res.status(500).json({ message: error.message || "Gagal menyimpan event." });
@@ -238,6 +289,56 @@ exports.updateEvent = async (req, res) => {
         });
 
         res.json({ message: "Event berhasil diupdate." });
+
+        // ====================================================================
+        // [LOGIKA NOTIFIKASI EVENT KE CONTRIBUTOR (UPDATE)]
+        // ====================================================================
+        let finalPaketIds = [];
+        if (paket_ids) {
+            try { finalPaketIds = JSON.parse(paket_ids); } catch (e) { if(Array.isArray(paket_ids)) finalPaketIds = paket_ids; }
+        }
+
+        if (finalPaketIds && finalPaketIds.length > 0) {
+            try {
+                const adminId = req.user?.id || req.user?.id_user || 1;
+                
+                const soalTerpilih = await prisma.soalPaketSoal.findMany({
+                    where: { id_paket_soal: { in: finalPaketIds.map(id => parseInt(id)) } },
+                    include: { soal: { include: { contributor: true } } }
+                });
+
+                const uniqueSoals = new Map();
+                soalTerpilih.forEach(item => {
+                    if (item.soal && item.soal.contributor && item.soal.status === 'disetujui') {
+                        uniqueSoals.set(item.soal.id_soal, item.soal);
+                    }
+                });
+
+                const notifData = [];
+                uniqueSoals.forEach((soal, id_soal) => {
+                    let rawText = soal.text_soal.replace(/<[^>]+>/g, ''); 
+                    let cuplikanSoal = rawText.length > 40 ? rawText.substring(0, 40) + "..." : rawText;
+
+                    // Menggunakan id (dari params URL /:id) untuk id_event saat update
+                    notifData.push({
+                        id_recipient: soal.contributor.id_user,
+                        id_sender: parseInt(adminId),
+                        id_event: parseInt(id),
+                        id_soal: id_soal,
+                        title: "Soal Terpilih Event",
+                        message: `Selamat! Soal Anda ("${cuplikanSoal}") telah digunakan dalam Event: ${nama_event}`,
+                        is_read: false
+                    });
+                });
+
+                if (notifData.length > 0) {
+                    await prisma.systemNotification.createMany({ data: notifData });
+                }
+            } catch (notifErr) {
+                console.error("Gagal mengirim notif event ke contributor saat update:", notifErr);
+            }
+        }
+        // ====================================================================
 
     } catch (error) {
         if (file) deleteFile(`uploads/events/${file.filename}`);

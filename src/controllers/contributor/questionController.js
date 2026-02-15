@@ -31,8 +31,6 @@ const deleteFile = (filePath) => {
 // =================================================================
 const copyExistingFile = (oldRelativePath, targetFolder) => {
     if (!oldRelativePath) return null;
-
-    
     const sourcePathString = Array.isArray(oldRelativePath) ? oldRelativePath[0] : oldRelativePath;
     if (typeof sourcePathString !== 'string' || sourcePathString === 'null' || sourcePathString === '') return null;
 
@@ -45,10 +43,8 @@ const copyExistingFile = (oldRelativePath, targetFolder) => {
 
     if (fs.existsSync(absoluteSourcePath)) {
         try {
-          
             const ext = path.extname(absoluteSourcePath);
             const newFileName = `copy_${Date.now()}_${Math.floor(Math.random() * 1000)}${ext}`;
-            
             const uploadDir = path.join(global.__basedir, `../uploads/${targetFolder}`);
             if (!fs.existsSync(uploadDir)) {
                 fs.mkdirSync(uploadDir, { recursive: true });
@@ -71,6 +67,52 @@ const copyExistingFile = (oldRelativePath, targetFolder) => {
     return null;
 };
 
+// =================================================================
+// HELPER: NOTIFIKASI PENGAJUAN SOAL (BAGIAN YANG DITAMBAHKAN)
+// =================================================================
+const triggerSubmitNotification = async (soalId, id_topik, senderId) => {
+    try {
+        // 1. Cari nama subject (mata pelajaran) dari topik
+        const topic = await prisma.topics.findUnique({
+            where: { id_topics: parseInt(id_topik) },
+            include: { subject: true }
+        });
+        if (!topic) return;
+
+        const subjectId = topic.id_subjects;
+        const subjectName = topic.subject.nama_subject;
+        
+        // 2. Ambil nama pengirim
+        const senderData = await prisma.users.findUnique({ where: { id_user: parseInt(senderId) } });
+        const senderName = senderData?.nama_user || "Contributor";
+
+        // 3. Cari Admin dan Validator yang sesuai kompetensi
+        const admins = await prisma.users.findMany({ where: { role: 'Admin' } });
+        const validators = await prisma.kompetensiUser.findMany({
+            where: { id_subject: subjectId },
+            include: { user: true }
+        });
+
+        // 4. Kumpulkan ID mereka (pakai Set agar tidak double)
+        const recipientIds = new Set();
+        admins.forEach(a => recipientIds.add(a.id_user));
+        validators.forEach(v => { if (v.user.role === 'Validator') recipientIds.add(v.user.id_user); });
+
+        // 5. Buat notifikasinya
+        const notifData = Array.from(recipientIds).map(rId => ({
+            id_recipient: rId,
+            id_sender: parseInt(senderId),
+            id_soal: parseInt(soalId),
+            title: "Pengajuan Soal Baru",
+            message: `Contributor ${senderName} mengajukan soal mata pelajaran ${subjectName}. Menunggu validasi.`,
+            is_read: false
+        }));
+
+        if (notifData.length > 0) await prisma.systemNotification.createMany({ data: notifData });
+    } catch (err) {
+        console.error("Gagal mengirim notif pengajuan:", err);
+    }
+};
 
 // =================================================================
 // 1. ADD QUESTION 
@@ -196,6 +238,10 @@ const addQuestion = async (req, res) => {
         
         if (jawabanData.length > 0) {
             await prisma.jawabanSoal.createMany({ data: jawabanData });
+        }
+
+        if (statusSoal === StatusSoal.need_verification) {
+            triggerSubmitNotification(newSoal.id_soal, id_topik, contributorId).catch(console.error);
         }
 
         res.status(201).json({ message: 'Soal berhasil disimpan.', data: { soalId: newSoal.id_soal } });
@@ -411,6 +457,10 @@ const editQuestion = async (req, res) => {
             await prisma.jawabanSoal.createMany({ data: jawabanDataBaru });
         }
         
+       if (statusSoal === StatusSoal.need_verification) {
+            triggerSubmitNotification(questionId, id_topik, req.user.id).catch(console.error);
+        }
+
         res.status(200).json({ message: 'Soal berhasil diperbarui.' });
 
     } catch (error) {

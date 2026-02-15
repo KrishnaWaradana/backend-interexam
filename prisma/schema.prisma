@@ -224,7 +224,7 @@ model DetailSubTopics {
 
 model CategorySubject {
   id_category_subject Int        @id @default(autoincrement())
-  id_category         Int        @map("d_category")
+  id_category         Int        @map("id_category")
   id_subject          Int
   category            Categories @relation(fields: [id_category], references: [id_category])
   subject             Subjects   @relation(fields: [id_subject], references: [id_subject])
@@ -490,7 +490,7 @@ model InstitusiTarget {
   nama_target          String?                @db.VarChar(100)
   subscribersInstitusi SubscribersInstitusi[]
 
-  @@map("insitusi_target")
+  @@map("institusi_target")
 }
 
 model SubscribersInstitusi {
@@ -500,7 +500,7 @@ model SubscribersInstitusi {
   institusi               InstitusiTarget @relation(fields: [id_institusi], references: [id_target])
   subscriber              Subscribers     @relation(fields: [id_subscriber], references: [id_subscriber])
 
-  @@map("subscribers_insitusi")
+  @@map("subscribers_institusi")
 }
 
 model Folders {
@@ -533,6 +533,9 @@ model SystemNotification {
   id_soal         Int?
   soal            Soal?    @relation(fields: [id_soal], references: [id_soal])
 
+  id_event        Int?
+  event           Event?   @relation(fields: [id_event], references: [id_event])
+
   @@map("system_notifications")
 }
 
@@ -558,6 +561,8 @@ model Event {
 
   // Relasi ke Pendaftar (Subscriber) - Opsional, untuk tracking siapa yang ikut
   pendaftar         EventSubscriber[]
+
+  notifications     SystemNotification[]
 
   @@map("events")
 }
