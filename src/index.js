@@ -24,6 +24,7 @@ const subscriberRoutes = require("./routes/subscriberRoutes");
 const landingRoutes = require("./routes/landingRoutes");
 const paymentRoutes = require("./routes/paymentRoutes");
 const workflowRoutes = require("./routes/workflowRoutes");
+const eventRoutes = require("./routes/eventRoutes");
 
 // ==========================================
 // 1. MIDDLEWARE GLOBAL & KEAMANAN
@@ -105,6 +106,9 @@ app.use("/api/v1/landing", landingRoutes);
 // Contributor Routes
 app.use("/api/v1/contributor/lookup", contributorLookupRoutes);
 app.use("/api/v1/contributor", soalRoutes);
+
+// event
+app.use("/api/v1/event", eventRoutes);
 
 // --- ROUTE PAYMENT (YANG TADI ERROR) ---
 // Jika di file paymentRoutes.js isinya: router.post('/payment/charge', ...)

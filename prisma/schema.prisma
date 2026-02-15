@@ -533,6 +533,9 @@ model SystemNotification {
   id_soal         Int?
   soal            Soal?    @relation(fields: [id_soal], references: [id_soal])
 
+  id_event        Int?
+  event           Event?   @relation(fields: [id_event], references: [id_event])
+
   @@map("system_notifications")
 }
 
@@ -558,6 +561,8 @@ model Event {
 
   // Relasi ke Pendaftar (Subscriber) - Opsional, untuk tracking siapa yang ikut
   pendaftar         EventSubscriber[]
+
+  notifications     SystemNotification[]
 
   @@map("events")
 }

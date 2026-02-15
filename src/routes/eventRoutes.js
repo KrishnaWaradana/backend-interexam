@@ -1,53 +1,53 @@
 const express = require('express');
 const router = express.Router();
 const eventController = require('../controllers/eventController');
-const upload = require('../middleware/uploadMiddleware');
-const { authenticateToken, authorizeRole } = require('../middleware/authMiddleware');
+const upload = require('../middleware/upload');
+const { authenticateToken, requireRole } = require('../middleware/authMiddleware');
 
 // === ADMIN & VALIDATOR ROUTES ===
 
-// 1. GET ALL (List Data)
+// 1. LOOKUP (Modal Paket) 
+router.get('/packages-lookup', 
+    authenticateToken, 
+    requireRole(['Admin', 'Validator', 'Contributor']),
+    eventController.getPackagesLookup
+);
+
+// 2. GET ALL (List Data)
 router.get('/', 
     authenticateToken, 
-    authorizeRole(['Admin', 'Validator']), 
+    requireRole(['Admin', 'Validator']),
     eventController.getAllEvents
 );
 
-// 2. GET BY ID (Detail Edit)
+// 3. GET BY ID (Detail Edit)
 router.get('/:id', 
     authenticateToken, 
-    authorizeRole(['Admin', 'Validator']), 
+    requireRole(['Admin', 'Validator']), 
     eventController.getEventById
 );
 
-// 3. CREATE (Add)
+// 4. CREATE (Add)
 router.post('/', 
     authenticateToken, 
-    authorizeRole(['Admin', 'Validator']), 
-    upload.single('fotoEvent'), 
+    requireRole(['Admin', 'Validator']),
+    upload.single('fotoEvent'),
     eventController.addEvent
 );
 
-// 4. UPDATE (Edit)
+// 5. UPDATE (Edit)
 router.put('/:id', 
     authenticateToken, 
-    authorizeRole(['Admin', 'Validator']), 
+    requireRole(['Admin', 'Validator']),
     upload.single('fotoEvent'), 
     eventController.updateEvent
 );
 
-// 5. DELETE (Hapus)
+// 6. DELETE (Hapus)
 router.delete('/:id', 
     authenticateToken, 
-    authorizeRole(['Admin', 'Validator']), 
+    requireRole(['Admin', 'Validator']),
     eventController.deleteEvent
-);
-
-// 6. LOOKUP (Modal Paket)
-router.get('/packages-lookup', 
-    authenticateToken, 
-    authorizeRole(['Admin', 'Validator', 'Contributor']), 
-    eventController.getPackagesLookup
 );
 
 module.exports = router;

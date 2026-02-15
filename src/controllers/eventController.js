@@ -1,12 +1,28 @@
-const prisma = require('../config/prismaClient'); // Sesuaikan path
+const prisma = require('../config/prismaClient'); 
 const fs = require('fs');
 const path = require('path');
 
-// --- HELPER: Hapus File ---
 const deleteFile = (filePath) => {
     if (!filePath) return;
-    const absolutePath = path.join(__dirname, '../', filePath);
-    if (fs.existsSync(absolutePath)) fs.unlinkSync(absolutePath);
+    const absolutePath = path.join(__dirname, '../../', filePath); 
+    if (fs.existsSync(absolutePath)) {
+        try {
+            fs.unlinkSync(absolutePath);
+        } catch (err) {
+            console.error("Gagal hapus file fisik:", err);
+        }
+    }
+};
+
+const generateImageUrl = (req, dbPath) => {
+    if (!dbPath) return null;
+
+    let cleanPath = dbPath.replace(/\\/g, "/");
+    const protocol = req.protocol;
+    const host = req.get('host');
+    const baseUrl = `${protocol}://${host}`;
+    
+    return `${baseUrl}/${cleanPath}`;
 };
 
 // =================================================================
@@ -24,10 +40,9 @@ exports.addEvent = async (req, res) => {
 
     try {
         if (!nama_event || !id_category || !tanggal_mulai || !tanggal_selesai) {
-            throw new Error("Data wajib (Nama, Kategori, Tanggal) tidak lengkap.");
+            throw new Error("Data wajib tidak lengkap.");
         }
 
-        // Parsing Data
         const categoryInt = parseInt(id_category);
         const durasiInt = parseInt(durasi_pengerjaan) || 0;
         
@@ -39,29 +54,86 @@ exports.addEvent = async (req, res) => {
 
         if (!paketIdsArray.length) throw new Error("Minimal harus memilih satu Paket Soal.");
 
-        // Transaction: Save Event + Relasi
         const newEvent = await prisma.$transaction(async (tx) => {
-            return await tx.event.create({
+            const event = await tx.event.create({
                 data: {
                     nama_event,
                     id_category: categoryInt,
-                    jenis,
-                    status,
+                    jenis, status,
                     tanggal_mulai: new Date(tanggal_mulai),
                     tanggal_selesai: new Date(tanggal_selesai),
                     durasi_pengerjaan: durasiInt,
                     deskripsi,
-                    banner: bannerPath,
-                    eventPaket: {
-                        create: paketIdsArray.map((id) => ({
-                            paketSoal: { connect: { id_paket_soal: parseInt(id) } }
-                        }))
-                    }
+                    banner: bannerPath
                 }
             });
+
+            if (paketIdsArray.length > 0) {
+                const relationData = paketIdsArray.map(pid => ({
+                    id_event: event.id_event,
+                    id_paket_soal: parseInt(pid)
+                }));
+
+                await tx.eventPaketSoal.createMany({
+                    data: relationData
+                });
+            }
+
+            return event;
         });
 
         res.status(201).json({ message: "Event berhasil dibuat.", data: newEvent });
+
+        // ====================================================================
+        // [LOGIKA NOTIFIKASI EVENT KE CONTRIBUTOR]
+        // ====================================================================
+        if (paketIdsArray && paketIdsArray.length > 0) {
+            try {
+                // Ambil ID Admin yang sedang login (fallback ke 1 jika undefined)
+                const adminId = req.user?.id || req.user?.id_user || 1; 
+
+                // 1. Bongkar paket dan ambil SEMUA soal beserta data Contributor-nya
+                const soalTerpilih = await prisma.soalPaketSoal.findMany({
+                    where: { id_paket_soal: { in: paketIdsArray.map(id => parseInt(id)) } },
+                    include: {
+                        soal: { include: { contributor: true } }
+                    }
+                });
+
+                // 2. Saring soal unik (Mencegah notif dobel jika 1 soal masuk di 2 paket)
+                const uniqueSoals = new Map();
+                soalTerpilih.forEach(item => {
+                    if (item.soal && item.soal.contributor && item.soal.status === 'disetujui') {
+                        uniqueSoals.set(item.soal.id_soal, item.soal);
+                    }
+                });
+
+                // 3. Rakit data notifikasi untuk masing-masing soal
+                const notifData = [];
+                uniqueSoals.forEach((soal, id_soal) => {
+                    let rawText = soal.text_soal.replace(/<[^>]+>/g, ''); 
+                    let cuplikanSoal = rawText.length > 40 ? rawText.substring(0, 40) + "..." : rawText;
+
+                    notifData.push({
+                        id_recipient: soal.contributor.id_user,
+                        id_sender: parseInt(adminId),
+                        id_event: newEvent.id_event, 
+                        id_soal: id_soal,
+                        title: "Soal Terpilih Event",
+                        message: `Selamat! Soal Anda ("${cuplikanSoal}") telah digunakan dalam Event: ${nama_event}`,
+                        is_read: false
+                    });
+                });
+
+                // 4. Tembakkan semua notifikasi sekaligus
+                if (notifData.length > 0) {
+                    await prisma.systemNotification.createMany({ data: notifData });
+                }
+            } catch (notifErr) {
+                console.error("Gagal mengirim notif event ke contributor:", notifErr);
+            }
+        }
+        // ====================================================================
 
     } catch (error) {
         if (bannerPath) deleteFile(bannerPath);
@@ -70,7 +142,7 @@ exports.addEvent = async (req, res) => {
 };
 
 // =================================================================
-// 2. READ ALL (LIST EVENT)
+// 2. READ ALL (LIST EVENT) -> [INI PERBAIKAN UTAMA GAMBAR]
 // =================================================================
 exports.getAllEvents = async (req, res) => {
     try {
@@ -90,7 +162,6 @@ exports.getAllEvents = async (req, res) => {
             orderBy: { created_at: 'desc' }
         });
 
-        // Format Data untuk Frontend
         const formattedEvents = events.map(event => ({
             id: event.id_event,
             nama_event: event.nama_event,
@@ -101,12 +172,13 @@ exports.getAllEvents = async (req, res) => {
             tanggal_mulai: new Date(event.tanggal_mulai).toLocaleDateString('id-ID', {
                 day: '2-digit', month: 'short', year: 'numeric'
             }),
-            image: event.banner ? `${process.env.BASE_URL}/${event.banner}` : null
+            image: generateImageUrl(req, event.banner) 
         }));
 
         res.json({ data: formattedEvents });
 
     } catch (error) {
+        console.error("Error Get All:", error);
         res.status(500).json({ message: "Gagal memuat data event." });
     }
 };
@@ -120,13 +192,24 @@ exports.getEventById = async (req, res) => {
         const event = await prisma.event.findUnique({
             where: { id_event: parseInt(id) },
             include: {
-                eventPaket: { include: { paketSoal: true } }
+                eventPaket: { 
+                    include: { 
+                        paketSoal: {
+                            select: {
+                                id_paket_soal: true,
+                                nama_paket: true,
+                                jumlah_soal: true,
+                                jenis: true,
+                                image: true
+                            }
+                        } 
+                    } 
+                }
             }
         });
 
         if (!event) return res.status(404).json({ message: "Event tidak ditemukan." });
 
-        // Format Date untuk input 'datetime-local' (YYYY-MM-DDTHH:mm)
         const toLocalISO = (date) => {
              const d = new Date(date);
              d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
@@ -137,16 +220,21 @@ exports.getEventById = async (req, res) => {
             ...event,
             tanggal_mulai: toLocalISO(event.tanggal_mulai),
             tanggal_selesai: toLocalISO(event.tanggal_selesai),
-            bannerUrl: event.banner ? `${process.env.BASE_URL}/${event.banner}` : null,
+            bannerUrl: generateImageUrl(req, event.banner),
+            
             selectedPaket: event.eventPaket.map(ep => ({
                 id: ep.paketSoal.id_paket_soal,
                 nama_paket: ep.paketSoal.nama_paket,
-                image: ep.paketSoal.image ? `${process.env.BASE_URL}/${ep.paketSoal.image}` : null
+                jumlah_soal: ep.paketSoal.jumlah_soal || 0,
+                // Normalisasi jenis agar Frontend bisa baca (Gratis/Berbayar)
+                jenis: ep.paketSoal.jenis ? (ep.paketSoal.jenis.toLowerCase() === 'gratis' ? 'Gratis' : 'Berbayar') : 'Gratis',
+                image: generateImageUrl(req, ep.paketSoal.image)
             }))
         };
 
         res.json({ data: formattedEvent });
     } catch (error) {
+        console.error("Gagal Detail Event:", error); 
         res.status(500).json({ message: "Gagal mengambil detail event." });
     }
 };
@@ -191,7 +279,6 @@ exports.updateEvent = async (req, res) => {
                 let ids = [];
                 try { ids = JSON.parse(paket_ids); } catch (e) { if(Array.isArray(paket_ids)) ids = paket_ids; }
                 
-                // Reset & Insert Ulang Paket
                 await tx.eventPaketSoal.deleteMany({ where: { id_event: parseInt(id) } });
                 if (ids.length > 0) {
                     await tx.eventPaketSoal.createMany({
@@ -202,6 +289,56 @@ exports.updateEvent = async (req, res) => {
         });
 
         res.json({ message: "Event berhasil diupdate." });
+
+        // ====================================================================
+        // [LOGIKA NOTIFIKASI EVENT KE CONTRIBUTOR (UPDATE)]
+        // ====================================================================
+        let finalPaketIds = [];
+        if (paket_ids) {
+            try { finalPaketIds = JSON.parse(paket_ids); } catch (e) { if(Array.isArray(paket_ids)) finalPaketIds = paket_ids; }
+        }
+
+        if (finalPaketIds && finalPaketIds.length > 0) {
+            try {
+                const adminId = req.user?.id || req.user?.id_user || 1;
+                
+                const soalTerpilih = await prisma.soalPaketSoal.findMany({
+                    where: { id_paket_soal: { in: finalPaketIds.map(id => parseInt(id)) } },
+                    include: { soal: { include: { contributor: true } } }
+                });
+
+                const uniqueSoals = new Map();
+                soalTerpilih.forEach(item => {
+                    if (item.soal && item.soal.contributor && item.soal.status === 'disetujui') {
+                        uniqueSoals.set(item.soal.id_soal, item.soal);
+                    }
+                });
+
+                const notifData = [];
+                uniqueSoals.forEach((soal, id_soal) => {
+                    let rawText = soal.text_soal.replace(/<[^>]+>/g, ''); 
+                    let cuplikanSoal = rawText.length > 40 ? rawText.substring(0, 40) + "..." : rawText;
+
+                    // Menggunakan id (dari params URL /:id) untuk id_event saat update
+                    notifData.push({
+                        id_recipient: soal.contributor.id_user,
+                        id_sender: parseInt(adminId),
+                        id_event: parseInt(id),
+                        id_soal: id_soal,
+                        title: "Soal Terpilih Event",
+                        message: `Selamat! Soal Anda ("${cuplikanSoal}") telah digunakan dalam Event: ${nama_event}`,
+                        is_read: false
+                    });
+                });
+
+                if (notifData.length > 0) {
+                    await prisma.systemNotification.createMany({ data: notifData });
+                }
+            } catch (notifErr) {
+                console.error("Gagal mengirim notif event ke contributor saat update:", notifErr);
+            }
+        }
+        // ====================================================================
 
     } catch (error) {
         if (file) deleteFile(`uploads/events/${file.filename}`);
@@ -215,15 +352,20 @@ exports.updateEvent = async (req, res) => {
 exports.deleteEvent = async (req, res) => {
     const { id } = req.params;
     try {
-        const event = await prisma.event.findUnique({ where: { id_event: parseInt(id) } });
+        const eventId = parseInt(id);
+        const event = await prisma.event.findUnique({ where: { id_event: eventId } });
+        
         if (!event) return res.status(404).json({ message: "Event tidak ditemukan." });
-
-        await prisma.event.delete({ where: { id_event: parseInt(id) } });
+        await prisma.eventPaketSoal.deleteMany({ where: { id_event: eventId } });
+        await prisma.event.delete({ where: { id_event: eventId } });
         if (event.banner) deleteFile(event.banner);
 
         res.json({ message: "Event berhasil dihapus." });
     } catch (error) {
-        if (error.code === 'P2003') return res.status(400).json({ message: "Gagal: Event ini sedang digunakan." });
+        console.error("Delete Error:", error);
+        if (error.code === 'P2003') {
+            return res.status(400).json({ message: "Gagal: Event ini sedang digunakan oleh data lain." });
+        }
         res.status(500).json({ message: "Gagal menghapus event." });
     }
 };
@@ -234,14 +376,19 @@ exports.deleteEvent = async (req, res) => {
 exports.getPackagesLookup = async (req, res) => {
     try {
         const { search, jenis } = req.query;
-        const whereClause = { status: 'active' };
+        const whereClause = {};
         
         if (search) whereClause.nama_paket = { contains: search, mode: 'insensitive' };
-        if (jenis && jenis !== 'all') whereClause.jenis = jenis;
+        if (jenis && jenis !== 'all') {
+            whereClause.jenis = jenis.toLowerCase(); 
+        }
 
         const packages = await prisma.paketSoal.findMany({
             where: whereClause,
-            select: { id_paket_soal: true, nama_paket: true, jumlah_soal: true, jenis: true, image: true, status: true },
+            select: { 
+                id_paket_soal: true, nama_paket: true, jumlah_soal: true, 
+                jenis: true, image: true, status: true 
+            },
             orderBy: { tanggal_dibuat: 'desc' },
             take: 20
         });
@@ -252,11 +399,12 @@ exports.getPackagesLookup = async (req, res) => {
             jumlah_soal: p.jumlah_soal || 0,
             jenis: p.jenis === 'gratis' ? 'Gratis' : 'Berbayar',
             status: p.status,
-            image: p.image ? `${process.env.BASE_URL}/${p.image}` : null
+            image: generateImageUrl(req, p.image) 
         }));
 
         res.json({ data: mappedData });
     } catch (error) {
+        console.error("Error lookup paket:", error);
         res.status(500).json({ message: "Gagal memuat paket soal." });
     }
 };

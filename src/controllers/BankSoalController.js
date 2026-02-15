@@ -6,7 +6,6 @@ const path = require('path');
 // 1. GET DASHBOARD BANK SOAL (UNIFIED)
 // ==========================================
 const getBankSoal = async (req, res) => {
-    // [PERBAIKAN] Ambil ID & Role lebih aman (handle 'id' atau 'id_user')
     const userId = req.user?.id || req.user?.id_user;
     const userRole = req.user?.role; 
 
@@ -15,13 +14,10 @@ const getBankSoal = async (req, res) => {
         
         // --- LOGIKA 1: ADMIN (Melihat Semua) ---
         if (userRole === 'Admin') {
-            // Admin melihat semua soal (kecuali draft)
             whereClause.status = { not: 'draft' }; 
         } 
-        
         // --- LOGIKA 2: VALIDATOR (Filter Kompetensi) ---
         else if (userRole === 'Validator') {
-            // 1. Cek User ini ahli di mapel apa saja?
             const kompetensi = await prisma.kompetensiUser.findMany({
                 where: { id_user: parseInt(userId) },
                 select: { id_subject: true }
@@ -30,13 +26,11 @@ const getBankSoal = async (req, res) => {
             const subjectIds = kompetensi.map(k => k.id_subject);
         
             if (subjectIds.length > 0) {
-                // 2. Filter: Soal harus punya topik -> topik punya subject -> subject ada di list keahlian
                 whereClause = {
                     topic: { id_subjects: { in: subjectIds } },
-                    status: { not: 'draft' } // Validator tidak perlu lihat draft contributor
+                    status: { not: 'draft' } 
                 };
             } else {
-                // Jika Validator belum disetting kompetensinya
                 return res.status(200).json({ 
                     status: 'success', 
                     data: [], 
@@ -44,14 +38,11 @@ const getBankSoal = async (req, res) => {
                 });
             }
         } 
-        
         // --- LOGIKA 3: SAFETY (Cegah Role Lain) ---
         else {
-             // Jika Contributor iseng nembak API ini, kasih kosong atau error
              return res.status(403).json({ message: "Akses Ditolak." });
         }
 
-        // --- QUERY DATABASE ---
         const soalList = await prisma.soal.findMany({
             where: whereClause,
             orderBy: { id_soal: 'desc' },
@@ -81,11 +72,7 @@ const getBankSoal = async (req, res) => {
             tanggal: item.tanggal_pembuatan
         }));
 
-        res.status(200).json({ 
-            status: 'success', 
-            role_detected: userRole, // Debugging info
-            data: formattedData 
-        });
+        res.status(200).json({ status: 'success', role_detected: userRole, data: formattedData });
     } catch (error) {
         console.error("Error getBankSoal:", error);
         res.status(500).json({ message: error.message });
@@ -105,41 +92,20 @@ const getSoalDetail = async (req, res) => {
                 topic: { include: { subject: true, jenjang: true } },
                 jawaban: true,
                 attachments: true,
-                
-                // Ambil data Validasi
-                // validasi: {
-                //     orderBy: { id_validasi: 'desc' }, 
-                //     take: 1,
-                //     include: {
-                //         validator: { select: { nama_user: true } }
-                //     }
-                // }
-
                 soalPaket: {
                     include: {
-                        paketSoal: {
-                            select: { nama_paket: true }
-                        }
+                        paketSoal: { select: { nama_paket: true } }
                     }
                 },
-
-
                 validasi: {
                     orderBy: { id_validasi: 'desc' }, 
                     take: 1,
-                    include: {
-                        validator: { select: { nama_user: true } }
-                    }
+                    include: { validator: { select: { nama_user: true } } }
                 }
             }
         });
         
         if (!soal) return res.status(404).json({ message: 'Soal tidak ditemukan' });
-
-        // let namaValidator = '-';
-        // if (soal.validasi && soal.validasi.length > 0) {
-        //     namaValidator = soal.validasi[0].validator?.nama_user || '-';
-        // }
 
         let namaValidator = '-';
         if (soal.validasi && soal.validasi.length > 0) {
@@ -148,9 +114,7 @@ const getSoalDetail = async (req, res) => {
 
         const responseData = {
             ...soal,
-
             list_paket: soal.soalPaket?.map(item => item.paketSoal?.nama_paket).filter(Boolean) || [],
-            
             nama_validator: namaValidator,
             mata_pelajaran: soal.topic?.subject?.nama_subject,
             nama_topik: soal.topic?.nama_topics
@@ -175,6 +139,9 @@ const updateSoal = async (req, res) => {
     } = req.body;
 
     try {
+        // [1] DEKLARASIKAN VARIABEL DI SINI AGAR BISA DIBACA OLEH NOTIFIKASI
+        let finalStatusEnum = null;
+
         await prisma.$transaction(async (tx) => {
             // Logic Masukkan ke Paket
             if (id_paket_soal) {
@@ -190,16 +157,15 @@ const updateSoal = async (req, res) => {
 
             // Logic Update Status & Konten
             const updateData = {};
-            let newStatusEnum = null;
 
             if (status) {
                 if (status.toLowerCase() === 'disetujui') {
                     updateData.status = 'disetujui';
-                    newStatusEnum = 'disetujui';
+                    finalStatusEnum = 'disetujui';
                 }
                 else if (status.toLowerCase() === 'ditolak') {
                     updateData.status = 'ditolak';
-                    newStatusEnum = 'ditolak';
+                    finalStatusEnum = 'ditolak';
                 }
                 else if (status.toLowerCase() === 'need verification') {
                     updateData.status = 'need_verification';
@@ -222,18 +188,65 @@ const updateSoal = async (req, res) => {
             }
             
             // Simpan Validator ke History
-            if (newStatusEnum && validatorId) {
+            if (finalStatusEnum && validatorId) {
                 await tx.validasiSoal.create({
                     data: {
                         id_soal: parseInt(id),
                         id_validator: parseInt(validatorId),
-                        status: newStatusEnum, 
+                        status: finalStatusEnum, 
                         tanggal_validasi: new Date(),
-                        keterangan: catatan_revisi || (newStatusEnum === 'disetujui' ? 'Soal disetujui' : 'Soal ditolak')
+                        keterangan: catatan_revisi || (finalStatusEnum === 'disetujui' ? 'Soal disetujui' : 'Soal ditolak')
                     }
                 });
             }
         });
+
+       // [2] --- TRIGGER NOTIFIKASI APPROVE/REJECT ---
+        if (finalStatusEnum && validatorId) {
+            try {
+                // Cari data soal untuk mengetahui siapa contributornya
+                const updatedSoal = await prisma.soal.findUnique({
+                    where: { id_soal: parseInt(id) },
+                    include: { topic: { include: { subject: true } }, contributor: true }
+                });
+
+                // ====================================================================
+                // BERSIHKAN SEMUA NOTIFIKASI LAMA UNTUK ADMIN/VALIDATOR
+                // ====================================================================
+                await prisma.systemNotification.updateMany({
+                    where: {
+                        id_soal: parseInt(id),
+                        id_recipient: { not: updatedSoal.contributor.id_user },
+                        is_read: false
+                    },
+                    data: {
+                        is_read: true
+                    }
+                });
+
+                // 2. KIRIM NOTIFIKASI HASIL KE CONTRIBUTOR
+                const senderData = await prisma.users.findUnique({ where: { id_user: parseInt(validatorId) } });
+
+                const title = finalStatusEnum === 'disetujui' ? "Soal Disetujui" : "Pengajuan Soal Ditolak";
+                const msg = finalStatusEnum === 'disetujui'
+                    ? `Selamat! Soal ${updatedSoal.topic.subject.nama_subject} Anda telah disetujui oleh ${senderData.nama_user}.`
+                    : `Maaf, soal ${updatedSoal.topic.subject.nama_subject} Anda ditolak oleh ${senderData.nama_user}. Catatan: ${catatan_revisi || '-'}`;
+
+                await prisma.systemNotification.create({
+                    data: {
+                        id_recipient: updatedSoal.contributor.id_user,
+                        id_sender: parseInt(validatorId),
+                        id_soal: parseInt(id),
+                        title: title,
+                        message: msg,
+                        is_read: false
+                    }
+                });
+
+            } catch (notifErr) {
+                console.error("Gagal memproses update notifikasi:", notifErr);
+            }
+        }
 
         res.status(200).json({ status: 'success', message: 'Update/Validasi berhasil.' });
     } catch (error) {
