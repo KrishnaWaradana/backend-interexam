@@ -7,6 +7,7 @@ exports.getPaketDetailById = async (req, res) => {
     const id_subscriber = req.user.id;
     const { id } = req.params;
 
+    // 1. Ambil Data Paket
     const paket = await prisma.paketSoal.findUnique({
       where: { id_paket_soal: parseInt(id) },
       include: {
@@ -40,6 +41,22 @@ exports.getPaketDetailById = async (req, res) => {
         .json({ status: "error", message: "Paket tidak ditemukan" });
     }
 
+    // 2. Ambil Data Subscriber untuk Cek Status Langganan
+    // Pastikan nama tabel di prismamu sesuai (misal: subscribers atau subscriber)
+    const subscriber = await prisma.subscribers.findUnique({
+      where: { id_subscriber: id_subscriber },
+      select: { status_langganan: true }, // Ambil field status
+    });
+
+    // --- LOGIKA STRATEGI NO 2 (SECURITY) ---
+    // Sesuaikan string 'active' dan 'premium' dengan value di databasemu
+    const jenisPaket = paket.jenis?.toLowerCase() || "gratis";
+    const isUserPremium = subscriber?.status_langganan === "active";
+    const isPaketPremium = jenisPaket === "berbayar";
+
+    // Jika Paket Premium TAPI User Masih Gratisan -> Sembunyikan Soal
+    const shouldHideSoal = isPaketPremium && !isUserPremium;
+
     const totalSoal = paket.soalPaket.length;
     const attempt = paket.paketAttempt[0];
     const answered = attempt ? attempt.history.length : 0;
@@ -52,6 +69,7 @@ exports.getPaketDetailById = async (req, res) => {
       return String.fromCharCode(97 + index);
     };
 
+    // 3. Mapping Data (Soal dikosongkan jika shouldHideSoal = true)
     const formattedData = {
       id_paket_soal: paket.id_paket_soal,
       label: paket.nama_paket,
@@ -61,31 +79,37 @@ exports.getPaketDetailById = async (req, res) => {
       category: paket.category?.nama_category || "Umum",
       creator: paket.creator?.nama_user || "Admin",
       jenis: paket.jenis,
+
+      // Metadata jumlah soal tetap dikirim agar FE bisa menampilkan "Total 50 Soal"
       soal_count: totalSoal,
       progress: { answered, totalSoal },
-      soal_paket_soal: paket.soalPaket.map((sp) => ({
-        id_soal_paket_soal: sp.id_soal_paket_soal,
-        id_soal: sp.id_soal,
-        id_paket_soal: sp.id_paket_soal,
-        point: sp.point,
-        durasi: sp.durasi,
-        soal: {
-          id_soal: sp.soal.id_soal,
-          text_soal: sp.soal.text_soal,
-          jenis_soal: sp.soal.jenis_soal,
-          level_kesulitan: sp.soal.level_kesulitan,
-          option_a: sp.soal.jawaban[0]?.opsi_jawaban_text || "",
-          option_b: sp.soal.jawaban[1]?.opsi_jawaban_text || "",
-          option_c: sp.soal.jawaban[2]?.opsi_jawaban_text || "",
-          option_d: sp.soal.jawaban[3]?.opsi_jawaban_text || "",
-          option_e: sp.soal.jawaban[4]?.opsi_jawaban_text || "",
-          jawaban_benar: getCorrectAnswer(sp.soal.jawaban),
-          deskripsi: sp.soal.jawaban[0]?.pembahasan || "",
-          topic: sp.soal.topic?.nama_topics,
-          subject: sp.soal.topic?.subject?.nama_subject,
-          jenjang: sp.soal.topic?.jenjang?.nama_jenjang,
-        },
-      })),
+
+      // INI BAGIAN PENTINGNYA:
+      soal_paket_soal: shouldHideSoal
+        ? []
+        : paket.soalPaket.map((sp) => ({
+            id_soal_paket_soal: sp.id_soal_paket_soal,
+            id_soal: sp.id_soal,
+            id_paket_soal: sp.id_paket_soal,
+            point: sp.point,
+            durasi: sp.durasi,
+            soal: {
+              id_soal: sp.soal.id_soal,
+              text_soal: sp.soal.text_soal,
+              jenis_soal: sp.soal.jenis_soal,
+              level_kesulitan: sp.soal.level_kesulitan,
+              option_a: sp.soal.jawaban[0]?.opsi_jawaban_text || "",
+              option_b: sp.soal.jawaban[1]?.opsi_jawaban_text || "",
+              option_c: sp.soal.jawaban[2]?.opsi_jawaban_text || "",
+              option_d: sp.soal.jawaban[3]?.opsi_jawaban_text || "",
+              option_e: sp.soal.jawaban[4]?.opsi_jawaban_text || "",
+              jawaban_benar: getCorrectAnswer(sp.soal.jawaban),
+              deskripsi: sp.soal.jawaban[0]?.pembahasan || "",
+              topic: sp.soal.topic?.nama_topics,
+              subject: sp.soal.topic?.subject?.nama_subject,
+              jenjang: sp.soal.topic?.jenjang?.nama_jenjang,
+            },
+          })),
     };
 
     res.status(200).json({
@@ -93,6 +117,7 @@ exports.getPaketDetailById = async (req, res) => {
       data: formattedData,
     });
   } catch (error) {
+    console.error("Error Detail Paket:", error);
     res.status(500).json({ status: "error", message: error.message });
   }
 };

@@ -1,14 +1,19 @@
 const express = require("express");
 const router = express.Router();
 
+// Controllers
 const dashboardController = require("../controllers/subscriber/dashboardController");
 const examController = require("../controllers/subscriber/examController");
 const libraryController = require("../controllers/subscriber/libraryController");
 
+// Middleware
 const {
   authenticateToken,
   requireRole,
 } = require("../middleware/authMiddleware");
+const {
+  requireActiveSubscription,
+} = require("../middleware/subscriptionMiddleware");
 
 // check role dari token
 const isSubscriber = requireRole(["subscriber"]);
@@ -32,6 +37,7 @@ router.get(
   "/favorites",
   authenticateToken,
   isSubscriber,
+  requireActiveSubscription,
   libraryController.getSubscriberFavorites,
 );
 
@@ -40,6 +46,7 @@ router.post(
   "/favorites",
   authenticateToken,
   isSubscriber,
+  requireActiveSubscription,
   libraryController.saveToFavorites,
 );
 
@@ -48,6 +55,7 @@ router.delete(
   "/favorites/:id",
   authenticateToken,
   isSubscriber,
+  requireActiveSubscription,
   libraryController.removeFromFavorites,
 );
 
@@ -56,6 +64,7 @@ router.post(
   "/favorites/toggle",
   authenticateToken,
   isSubscriber,
+  requireActiveSubscription,
   libraryController.toggleFavorite,
 );
 
@@ -66,6 +75,7 @@ router.post(
   "/folders",
   authenticateToken,
   isSubscriber,
+  requireActiveSubscription,
   libraryController.createFolder,
 );
 
@@ -74,6 +84,7 @@ router.get(
   "/folders",
   authenticateToken,
   isSubscriber,
+  requireActiveSubscription,
   libraryController.getMyFolders,
 );
 
@@ -82,6 +93,7 @@ router.delete(
   "/folders/:id",
   authenticateToken,
   isSubscriber,
+  requireActiveSubscription,
   libraryController.deleteFolder,
 );
 
@@ -90,6 +102,7 @@ router.post(
   "/folders/add-item",
   authenticateToken,
   isSubscriber,
+  requireActiveSubscription,
   libraryController.addToFolder,
 );
 
@@ -136,6 +149,7 @@ router.get(
   "/statistics/progress",
   authenticateToken,
   isSubscriber,
+  requireActiveSubscription,
   dashboardController.getProgressAnalytics,
 );
 
@@ -173,6 +187,34 @@ router.get(
   authenticateToken,
   isSubscriber,
   examController.getExamLeaderboard,
+);
+
+// Endpoint pengecekan status paket langganan pada subscriber
+router.get(
+  "/check-status",
+  authenticateToken,
+  isSubscriber,
+  async (req, res) => {
+    try {
+      const id_subscriber = req.user.id_user || req.user.id;
+
+      // Cek subscription aktif
+      const activeSub = await prisma.subscribePaket.findFirst({
+        where: {
+          id_subscriber: parseInt(id_subscriber),
+          status: "active",
+          tanggal_selesai: { gte: new Date() },
+        },
+      });
+
+      res.json({
+        status: "success",
+        is_premium: !!activeSub, // true jika ada, false jika null
+      });
+    } catch (error) {
+      res.status(500).json({ is_premium: false });
+    }
+  },
 );
 
 module.exports = router;
