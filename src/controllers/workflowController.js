@@ -269,6 +269,27 @@ const markSingleAsRead = async (req, res) => {
     return res.status(500).json({ message: "Gagal update status" });
   }
 };
+// =================================================================
+// 7. HAPUS SEMUA NOTIFIKASI USER (HANYA MILIK USER YANG LOGIN)
+// =================================================================
+const deleteAllMyNotifications = async (req, res) => {
+  try {
+    // Ambil ID user yang sedang login
+    const userId = req.user?.id || req.user?.id_user;
+    
+    // Hapus SEMUA notifikasi (baik terbaca maupun belum) HANYA untuk user ini
+    await prisma.systemNotification.deleteMany({
+      where: { 
+        id_recipient: parseInt(userId) 
+      }
+    });
+    
+    return res.status(200).json({ message: "Semua notifikasi berhasil dihapus" });
+  } catch (error) {
+    console.error("Error delete notifications:", error);
+    return res.status(500).json({ message: "Gagal menghapus notifikasi" });
+  }
+};
 
 module.exports = {
   submitSoalWithNotif,
@@ -277,5 +298,6 @@ module.exports = {
   getUserNotifications,
   markAsRead,
   notifyContributorsForEvent,
-  markSingleAsRead
+  markSingleAsRead,
+  deleteAllMyNotifications
 };

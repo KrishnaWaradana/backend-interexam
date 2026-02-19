@@ -36,5 +36,10 @@ router.post(
   requireRole(['Admin', 'Validator']), 
   workflowController.approveSoalWithNotif
 );
+router.delete(
+  '/alerts', 
+  authenticateToken, 
+  workflowController.deleteAllMyNotifications
+);
 
 module.exports = router;
