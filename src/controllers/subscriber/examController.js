@@ -7,7 +7,7 @@ exports.getPaketDetailById = async (req, res) => {
     const id_subscriber = req.user.id;
     const { id } = req.params;
 
-    // 1. Ambil Data Paket
+    // 1. AMBIL DATA PAKET (Termasuk Soal & Jawaban)
     const paket = await prisma.paketSoal.findUnique({
       where: { id_paket_soal: parseInt(id) },
       include: {
@@ -18,6 +18,7 @@ exports.getPaketDetailById = async (req, res) => {
             soal: {
               include: {
                 topic: { include: { subject: true, jenjang: true } },
+                // PENTING: Ambil relasi jawaban untuk opsi pilihan ganda
                 jawaban: {
                   orderBy: { id_jawaban: "asc" },
                 },
@@ -26,6 +27,7 @@ exports.getPaketDetailById = async (req, res) => {
           },
           orderBy: { id_soal_paket_soal: "asc" },
         },
+        // Ambil progress user untuk paket ini (jika ada)
         paketAttempt: {
           where: { subscribers_id_subscriber: id_subscriber },
           include: { history: true },
@@ -41,35 +43,38 @@ exports.getPaketDetailById = async (req, res) => {
         .json({ status: "error", message: "Paket tidak ditemukan" });
     }
 
-    // 2. Ambil Data Subscriber untuk Cek Status Langganan
-    // Pastikan nama tabel di prismamu sesuai (misal: subscribers atau subscriber)
+    // 2. CEK STATUS LANGGANAN (STRATEGI NO 2)
     const subscriber = await prisma.subscribers.findUnique({
       where: { id_subscriber: id_subscriber },
-      select: { status_langganan: true }, // Ambil field status
+      select: { status_langganan: true }, // Pastikan field ini ada di tabel subscribers/subscribePaket
     });
 
-    // --- LOGIKA STRATEGI NO 2 (SECURITY) ---
-    // Sesuaikan string 'active' dan 'premium' dengan value di databasemu
-    const jenisPaket = paket.jenis?.toLowerCase() || "gratis";
-    const isUserPremium = subscriber?.status_langganan === "active";
-    const isPaketPremium = jenisPaket === "berbayar";
+    // NOTE: Sesuaikan logika status ini dengan schema database-mu
+    // Misal: Cek tabel 'SubscribePaket' jika status langganan terpisah
+    const activeSub = await prisma.subscribePaket.findFirst({
+      where: {
+        id_subscriber: id_subscriber,
+        status: "active",
+        tanggal_selesai: { gte: new Date() },
+      },
+    });
 
-    // Jika Paket Premium TAPI User Masih Gratisan -> Sembunyikan Soal
+    const isUserPremium = !!activeSub; // User dianggap premium jika punya langganan aktif
+
+    // Normalisasi jenis paket (antisipasi case sensitivity)
+    const jenisPaket = paket.jenis?.toLowerCase()?.trim() || "gratis";
+    const isPaketPremium =
+      jenisPaket === "berbayar" || jenisPaket === "premium";
+
+    // Kunci konten JIKA: Paket Berbayar DAN User Tidak Premium
     const shouldHideSoal = isPaketPremium && !isUserPremium;
 
+    // 3. SIAPKAN DATA UMUM
     const totalSoal = paket.soalPaket.length;
     const attempt = paket.paketAttempt[0];
     const answered = attempt ? attempt.history.length : 0;
 
-    // Helper untuk mendapatkan jawaban benar
-    const getCorrectAnswer = (jawaban) => {
-      const correctAnswerObj = jawaban.find((j) => j.status === true);
-      if (!correctAnswerObj) return "a";
-      const index = jawaban.indexOf(correctAnswerObj);
-      return String.fromCharCode(97 + index);
-    };
-
-    // 3. Mapping Data (Soal dikosongkan jika shouldHideSoal = true)
+    // 4. MAPPING DATA (FORMATTING)
     const formattedData = {
       id_paket_soal: paket.id_paket_soal,
       label: paket.nama_paket,
@@ -78,43 +83,68 @@ exports.getPaketDetailById = async (req, res) => {
       image: paket.image,
       category: paket.category?.nama_category || "Umum",
       creator: paket.creator?.nama_user || "Admin",
-      jenis: paket.jenis,
+      jenis: paket.jenis, // Dikirim agar FE bisa menampilkan badge gembok
 
-      // Metadata jumlah soal tetap dikirim agar FE bisa menampilkan "Total 50 Soal"
+      // Metadata Soal
       soal_count: totalSoal,
       progress: { answered, totalSoal },
 
-      // INI BAGIAN PENTINGNYA:
+      // --- LOGIKA UTAMA: MAP SOAL & OPSI JAWABAN ---
       soal_paket_soal: shouldHideSoal
-        ? []
-        : paket.soalPaket.map((sp) => ({
-            id_soal_paket_soal: sp.id_soal_paket_soal,
-            id_soal: sp.id_soal,
-            id_paket_soal: sp.id_paket_soal,
-            point: sp.point,
-            durasi: sp.durasi,
-            soal: {
-              id_soal: sp.soal.id_soal,
-              text_soal: sp.soal.text_soal,
-              jenis_soal: sp.soal.jenis_soal,
-              level_kesulitan: sp.soal.level_kesulitan,
-              option_a: sp.soal.jawaban[0]?.opsi_jawaban_text || "",
-              option_b: sp.soal.jawaban[1]?.opsi_jawaban_text || "",
-              option_c: sp.soal.jawaban[2]?.opsi_jawaban_text || "",
-              option_d: sp.soal.jawaban[3]?.opsi_jawaban_text || "",
-              option_e: sp.soal.jawaban[4]?.opsi_jawaban_text || "",
-              jawaban_benar: getCorrectAnswer(sp.soal.jawaban),
-              deskripsi: sp.soal.jawaban[0]?.pembahasan || "",
-              topic: sp.soal.topic?.nama_topics,
-              subject: sp.soal.topic?.subject?.nama_subject,
-              jenjang: sp.soal.topic?.jenjang?.nama_jenjang,
-            },
-          })),
+        ? [] // KOSONGKAN ARRAY JIKA TERKUNCI (SECURITY)
+        : paket.soalPaket.map((sp) => {
+            const s = sp.soal;
+
+            // Logika Opsi Berdasarkan Jenis Soal
+            let formattedOptions = [];
+
+            if (s.jenis_soal === "short_answer") {
+              // Short Answer: Tidak butuh opsi (user mengetik)
+              formattedOptions = [];
+            } else {
+              // Multiple Choice, Multiple Answer, True False:
+              // Map dari tabel 'JawabanSoal' ke format yang dimengerti FE
+              formattedOptions = s.jawaban.map((j) => ({
+                id: j.id_jawaban,
+                text: j.opsi_jawaban_text,
+                image: j.path_gambar_jawaban,
+                // KEAMANAN: Jangan kirim status 'benar/salah' ke Frontend!
+              }));
+            }
+
+            return {
+              id_soal_paket_soal: sp.id_soal_paket_soal,
+              id_soal: s.id_soal,
+              id_paket_soal: sp.id_paket_soal,
+              point: sp.point,
+              durasi: sp.durasi,
+              soal: {
+                id_soal: s.id_soal,
+                text_soal: s.text_soal,
+
+                // Kirim Jenis Soal agar FE tahu harus render Radio/Checkbox/Textarea
+                jenis_soal: s.jenis_soal,
+
+                level_kesulitan: s.level_kesulitan,
+
+                // Kirim Opsi yang sudah diformat
+                options: formattedOptions,
+
+                topic: s.topic?.nama_topics,
+                subject: s.topic?.subject?.nama_subject,
+                jenjang: s.topic?.jenjang?.nama_jenjang,
+
+                // Deskripsi/Pembahasan biasanya dikirim NANTI setelah submit (tergantung logic bisnis kamu)
+                // deskripsi: s.jawaban[0]?.pembahasan || "",
+              },
+            };
+          }),
     };
 
     res.status(200).json({
       status: "success",
       data: formattedData,
+      is_locked: shouldHideSoal, // Flag tambahan untuk memudahkan FE
     });
   } catch (error) {
     console.error("Error Detail Paket:", error);

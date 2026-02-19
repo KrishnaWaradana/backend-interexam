@@ -116,6 +116,12 @@ router.get(
   libraryController.getAllPaketsWithProgress,
 );
 
+router.get("/events", authenticateToken, libraryController.getAllEvents);
+
+router.get("/events/:id", authenticateToken, libraryController.getEventDetail);
+
+router.post("/events/join", authenticateToken, libraryController.joinEvent);
+
 // ==========================================
 // GROUP 2: DASHBOARD & STATS (dashboardController)
 // ==========================================
