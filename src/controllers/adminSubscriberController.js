@@ -306,3 +306,81 @@ exports.resendInvoice = async (req, res) => {
         res.status(500).json({ message: "Terjadi kesalahan server" });
     }
 };
+// ====================================================================
+// 5. GET ALL SUBSCRIBERS (KHUSUS UNTUK DASHBOARD - ACTIVE/INACTIVE)
+// ====================================================================
+exports.getAllSubscribersForAdmin = async (req, res) => {
+    try {
+        // Ambil data Subscriber dan riwayat langganan terakhir saja
+        const subscribers = await prisma.subscribers.findMany({
+            include: {
+                subscribePaket: {
+                    include: { paketLangganan: true },
+                    orderBy: { tanggal_mulai: 'desc' },
+                    take: 1
+                }
+            },
+            orderBy: { id_subscriber: 'desc' } 
+        });
+
+        let totalActive = 0;
+        let totalInactive = 0;
+
+        // Olah Data (HANYA 2 STATUS: active / inactive)
+        const formattedData = subscribers.map((sub) => {
+            const langgananTerakhir = sub.subscribePaket[0]; 
+
+            let statusFinal = "inactive"; 
+            let paketName = "-";
+            let rawHarga = 0;
+            let tglBeli = "-";
+            let tglBerakhir = "-";
+
+            if (langgananTerakhir) {
+                paketName = langgananTerakhir.paketLangganan?.nama_paket || "-";
+                rawHarga = langgananTerakhir.paketLangganan?.harga || 0;
+                
+                tglBeli = langgananTerakhir.tanggal_mulai ? new Date(langgananTerakhir.tanggal_mulai).toLocaleDateString('id-ID') : "-";
+                tglBerakhir = langgananTerakhir.tanggal_selesai ? new Date(langgananTerakhir.tanggal_selesai).toLocaleDateString('id-ID') : "-";
+
+                // Pengecekan: Apakah status "active" DAN belum lewat dari hari ini?
+                const isExpired = langgananTerakhir.tanggal_selesai && new Date(langgananTerakhir.tanggal_selesai) < new Date();
+                
+                if (langgananTerakhir.status === 'active' && !isExpired) {
+                    statusFinal = "active"; 
+                    totalActive++;
+                } else {
+                    totalInactive++;
+                }
+            } else {
+                totalInactive++;
+            }
+
+            return {
+                id_subscriber: sub.id_subscriber,
+                nama: sub.nama_subscriber || sub.username || "User Tanpa Nama",
+                email: sub.email_subscriber || "-",
+                no_tlp: sub.phone || "-",
+                status: statusFinal, 
+                langganan: paketName,
+                harga: rawHarga,
+                tgl_beli: tglBeli,
+                tgl_berakhir: tglBerakhir
+            };
+        });
+
+        res.status(200).json({
+            status: "success",
+            statistics: {
+                total_semua: subscribers.length,
+                total_active: totalActive,
+                total_inactive: totalInactive
+            },
+            data: formattedData
+        });
+
+    } catch (error) {
+        console.error("Error Get All Subscribers Dashboard Admin:", error);
+        res.status(500).json({ status: "error", message: "Gagal mengambil data dari server." });
+    }
+};
