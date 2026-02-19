@@ -318,6 +318,11 @@ exports.getAllSubscribersForAdmin = async (req, res) => {
                     include: { paketLangganan: true },
                     orderBy: { tanggal_mulai: 'desc' },
                     take: 1
+                },
+                transaksi: {
+                    where: { status: 'success' },
+                    orderBy: { created_at: 'desc' },
+                    take: 1
                 }
             },
             orderBy: { id_subscriber: 'desc' } 
@@ -328,27 +333,46 @@ exports.getAllSubscribersForAdmin = async (req, res) => {
 
         // Olah Data (HANYA 2 STATUS: active / inactive)
         const formattedData = subscribers.map((sub) => {
-            const langgananTerakhir = sub.subscribePaket[0]; 
+            const langgananTerakhir = sub.subscribePaket[0];
+            const transaksiTerakhir = sub.transaksi[0];
 
-            let statusFinal = "inactive"; 
-            let paketName = "-";
+            let statusFinal = "inactive";
+            // let paketName = "-";
+            let paketName = "Tidak Berlangganan";
             let rawHarga = 0;
             let tglBeli = "-";
             let tglBerakhir = "-";
 
-            if (langgananTerakhir) {
-                paketName = langgananTerakhir.paketLangganan?.nama_paket || "-";
-                rawHarga = langgananTerakhir.paketLangganan?.harga || 0;
+            // if (langgananTerakhir) {
+            //     paketName = langgananTerakhir.paketLangganan?.nama_paket || "-";
+            //     rawHarga = langgananTerakhir.paketLangganan?.harga || 0;
                 
-                tglBeli = langgananTerakhir.tanggal_mulai ? new Date(langgananTerakhir.tanggal_mulai).toLocaleDateString('id-ID') : "-";
-                tglBerakhir = langgananTerakhir.tanggal_selesai ? new Date(langgananTerakhir.tanggal_selesai).toLocaleDateString('id-ID') : "-";
+            //     tglBeli = langgananTerakhir.tanggal_mulai ? new Date(langgananTerakhir.tanggal_mulai).toLocaleDateString('id-ID') : "-";
+            //     tglBerakhir = langgananTerakhir.tanggal_selesai ? new Date(langgananTerakhir.tanggal_selesai).toLocaleDateString('id-ID') : "-";
 
-                // Pengecekan: Apakah status "active" DAN belum lewat dari hari ini?
+            //     // Pengecekan: Apakah status "active" DAN belum lewat dari hari ini?
+            //     const isExpired = langgananTerakhir.tanggal_selesai && new Date(langgananTerakhir.tanggal_selesai) < new Date();
+                
+            //     if (langgananTerakhir.status === 'active' && !isExpired) {
+            //         statusFinal = "active"; 
+            //         totalActive++;
+            //     } else {
+            //         totalInactive++;
+            //     }
+            // } else {
+            //     totalInactive++;
+            // }
+
+            if (langgananTerakhir) {
+                // Cek apakah paket masih aktif & belum expired
                 const isExpired = langgananTerakhir.tanggal_selesai && new Date(langgananTerakhir.tanggal_selesai) < new Date();
                 
                 if (langgananTerakhir.status === 'active' && !isExpired) {
                     statusFinal = "active"; 
                     totalActive++;
+                    paketName = langgananTerakhir.paketLangganan?.nama_paket || "Paket Aktif";
+                    
+                    rawHarga = transaksiTerakhir?.amount || 0; 
                 } else {
                     totalInactive++;
                 }
