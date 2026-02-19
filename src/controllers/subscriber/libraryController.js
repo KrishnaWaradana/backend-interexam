@@ -556,7 +556,7 @@ exports.getAllEvents = async (req, res) => {
     const { search, category, page = 1, limit = 10 } = req.query;
 
     const whereClause = {
-      status: "active", // Hanya tampilkan event aktif
+      status: "active",
     };
 
     // Filter Search
@@ -578,7 +578,7 @@ exports.getAllEvents = async (req, res) => {
         include: {
           category: true,
           _count: {
-            select: { pendaftar: true }, // Hitung berapa orang yang sudah daftar
+            select: { eventPaket: true },
           },
         },
         orderBy: { tanggal_mulai: "asc" }, // Urutkan dari yang terdekat
@@ -597,7 +597,8 @@ exports.getAllEvents = async (req, res) => {
       date_end: evt.tanggal_selesai,
       category: evt.category?.nama_category || "Umum",
       jenis: evt.jenis, // Gratis / Berbayar
-      participants: evt._count.pendaftar,
+      total_paket: evt._count.eventPaket,
+
       is_active:
         new Date() >= new Date(evt.tanggal_mulai) &&
         new Date() <= new Date(evt.tanggal_selesai),
@@ -624,17 +625,14 @@ exports.getEventDetail = async (req, res) => {
       where: { id_event: parseInt(id) },
       include: {
         category: true,
-        // Cek apakah user sudah daftar event ini
         pendaftar: {
           where: { id_subscriber: parseInt(id_subscriber) },
         },
-        // Ambil paket soal yang ada di dalam event ini
         eventPaket: {
           include: {
             paketSoal: {
               include: {
-                _count: { select: { soalPaket: true } }, // Hitung jumlah soal
-                // Cek progress user di paket ini
+                _count: { select: { soalPaket: true } },
                 paketAttempt: {
                   where: { subscribers_id_subscriber: parseInt(id_subscriber) },
                   orderBy: { started_at: "desc" },
@@ -659,7 +657,47 @@ exports.getEventDetail = async (req, res) => {
       now >= new Date(event.tanggal_mulai) &&
       now <= new Date(event.tanggal_selesai);
 
-    // Format Data
+    const sortedEventPakets = event.eventPaket.sort(
+      (a, b) => a.id_event_paket - b.id_event_paket,
+    );
+
+    let isPreviousDone = true; // Paket pertama (index 0) selalu dianggap "paket sebelumnya sudah selesai"
+
+    const formattedCourses = sortedEventPakets.map((ep, index) => {
+      const p = ep.paketSoal;
+      const attempt = p.paketAttempt[0];
+      const isDone = attempt?.finished_at != null;
+
+      const isLockedBySequence = isRegistered && !isPreviousDone;
+      const finalIsLocked = !isRegistered || isLockedBySequence;
+
+      // Pesan gembok
+      let lockedReason = null;
+      if (isLockedBySequence) {
+        // Jika kita mau sebut nama paket sebelumnya, ambil dari sorted array
+        const prevPaketName = sortedEventPakets[index - 1].paketSoal.nama_paket;
+        lockedReason = `Selesaikan paket '${prevPaketName}' terlebih dahulu`;
+      }
+
+      // Update isPreviousDone untuk iterasi (paket) selanjutnya
+      isPreviousDone = isDone;
+
+      return {
+        id: p.id_paket_soal,
+        title: p.nama_paket,
+        image: p.image,
+        total_soal: p._count.soalPaket,
+        is_locked: finalIsLocked,
+        locked_reason: lockedReason,
+        status_pengerjaan: isDone
+          ? "selesai"
+          : attempt
+            ? "sedang_mengerjakan"
+            : "belum_mulai",
+      };
+    });
+
+    // Format Data Final
     const data = {
       id: event.id_event,
       title: event.nama_event,
@@ -670,35 +708,13 @@ exports.getEventDetail = async (req, res) => {
       jenis: event.jenis,
       category: event.category?.nama_category,
 
-      // Status User terhadap Event
       user_status: {
         is_registered: isRegistered,
         can_join: !isRegistered && event.status === "active",
         is_ongoing: isOngoing,
       },
 
-      // List Paket Soal dalam Event (Hanya tampil detail jika sudah daftar)
-      courses: event.eventPaket.map((ep) => {
-        const p = ep.paketSoal;
-        // Logic Progress
-        const attempt = p.paketAttempt[0];
-        const isDone = attempt?.finished_at != null;
-
-        return {
-          id: p.id_paket_soal,
-          title: p.nama_paket,
-          image: p.image,
-          total_soal: p._count.soalPaket,
-          // Jika belum daftar event, kunci paketnya
-          is_locked: !isRegistered,
-          // Status pengerjaan
-          status_pengerjaan: isDone
-            ? "selesai"
-            : attempt
-              ? "sedang_mengerjakan"
-              : "belum_mulai",
-        };
-      }),
+      courses: formattedCourses, // Masukkan array yang sudah ada logika berantainya
     };
 
     res.status(200).json({ status: "success", data });

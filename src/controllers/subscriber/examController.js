@@ -395,3 +395,142 @@ exports.getExamLeaderboard = async (req, res) => {
     res.status(500).json({ status: "error", message: error.message });
   }
 };
+
+exports.getEventPaketDetail = async (req, res) => {
+  try {
+    const id_subscriber = req.user.id;
+    // URL param kita buat begini: /events/:id_event/pakets/:id_paket_soal
+    const { id_event, id_paket_soal } = req.params;
+
+    // 1. CEK VALIDITAS EVENT & PENDAFTARAN
+    const event = await prisma.event.findUnique({
+      where: { id_event: parseInt(id_event) },
+      include: {
+        pendaftar: { where: { id_subscriber: id_subscriber } },
+        eventPaket: true,
+      },
+    });
+
+    if (!event)
+      return res.status(404).json({ message: "Event tidak ditemukan" });
+    if (event.pendaftar.length === 0)
+      return res
+        .status(403)
+        .json({ message: "Anda belum mendaftar event ini." });
+
+    // Pastikan event sedang berlangsung (tanggal valid)
+    const now = new Date();
+    if (
+      now < new Date(event.tanggal_mulai) ||
+      now > new Date(event.tanggal_selesai)
+    ) {
+      return res
+        .status(403)
+        .json({ message: "Event sedang tidak aktif.", is_locked: true });
+    }
+
+    // 2. LOGIKA GLOBAL TIMER (THE MAGIC)
+    // Ambil semua ID Paket yang ada di dalam Event ini
+    const eventPaketIds = event.eventPaket.map((ep) => ep.id_paket_soal);
+
+    // Cari KAPAN user PERTAMA KALI memulai salah satu paket di event ini
+    const firstAttempt = await prisma.paketAttempt.findFirst({
+      where: {
+        subscribers_id_subscriber: id_subscriber,
+        paket_soal_id_paket_soal: { in: eventPaketIds }, // Cari di semua paket event ini
+      },
+      orderBy: { started_at: "asc" }, // Ambil yang paling awal
+    });
+
+    // Kalkulasi Waktu (dalam detik agar presisi untuk Frontend)
+    const durasiTotalDetik = event.durasi_pengerjaan * 60;
+    let sisaWaktuDetik = durasiTotalDetik;
+
+    if (firstAttempt && firstAttempt.started_at) {
+      const waktuMulai = new Date(firstAttempt.started_at);
+      const selisihMs = now - waktuMulai; // Selisih dalam millisecond
+      const selisihDetik = Math.floor(selisihMs / 1000);
+
+      sisaWaktuDetik = durasiTotalDetik - selisihDetik;
+    }
+
+    // Jika waktu habis, blokir akses ke soal
+    if (sisaWaktuDetik <= 0) {
+      return res.status(200).json({
+        status: "success",
+        is_time_up: true, // Flag khusus untuk Frontend
+        message: "Waktu pengerjaan event telah habis.",
+      });
+    }
+
+    // 3. JIKA WAKTU MASIH ADA, AMBIL DATA SOAL (Seperti biasa)
+    const paket = await prisma.paketSoal.findUnique({
+      where: { id_paket_soal: parseInt(id_paket_soal) },
+      include: {
+        soalPaket: {
+          include: {
+            soal: {
+              include: { jawaban: { orderBy: { id_jawaban: "asc" } } },
+            },
+          },
+          orderBy: { id_soal_paket_soal: "asc" },
+        },
+        paketAttempt: {
+          where: { subscribers_id_subscriber: id_subscriber },
+          include: { history: true },
+          take: 1,
+        },
+      },
+    });
+
+    if (!paket)
+      return res.status(404).json({ message: "Paket soal tidak ditemukan" });
+
+    // 4. FORMATTING DATA (Dengan mapping tipe soal dinamis)
+    const formattedData = {
+      id_paket_soal: paket.id_paket_soal,
+      id_event: event.id_event,
+      judul_event: event.nama_event,
+      nama_paket: paket.nama_paket,
+
+      // DATA WAKTU DIKIRIM KE FRONTEND
+      durasi_event_menit: event.durasi_pengerjaan,
+      sisa_waktu_detik: sisaWaktuDetik,
+
+      soal_count: paket.soalPaket.length,
+      soal_paket_soal: paket.soalPaket.map((sp) => {
+        const s = sp.soal;
+        let formattedOptions = [];
+
+        if (s.jenis_soal !== "short_answer") {
+          formattedOptions = s.jawaban.map((j) => ({
+            id: j.id_jawaban,
+            text: j.opsi_jawaban_text,
+            image: j.path_gambar_jawaban,
+          }));
+        }
+
+        return {
+          id_soal_paket_soal: sp.id_soal_paket_soal,
+          id_soal: s.id_soal,
+          point: sp.point,
+          soal: {
+            id_soal: s.id_soal,
+            text_soal: s.text_soal,
+            jenis_soal: s.jenis_soal,
+            options: formattedOptions,
+          },
+        };
+      }),
+    };
+
+    res.status(200).json({
+      status: "success",
+      data: formattedData,
+      is_time_up: false,
+    });
+  } catch (error) {
+    console.error("Error Get Event Paket:", error);
+    res.status(500).json({ status: "error", message: error.message });
+  }
+};

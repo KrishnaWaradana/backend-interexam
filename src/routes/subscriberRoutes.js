@@ -223,4 +223,10 @@ router.get(
   },
 );
 
+router.get(
+  "/events/:id_event/pakets/:id_paket_soal",
+  authenticateToken,
+  examController.getEventPaketDetail,
+);
+
 module.exports = router;
