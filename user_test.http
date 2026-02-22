@@ -684,3 +684,30 @@ Content-Type: application/json
   "gross_amount": "533333", 
   "fraud_status": "accept"
 }
+
+### Variabel Konfigurasi
+@baseUrl = http://localhost:5000/api
+
+### TEST DASHBOARD STATS (Tanpa Token - Menggunakan Bypass ID 13)
+GET {{baseUrl}}/dashboard/stats
+Content-Type: application/json
+
+### Penjelasan:
+# Karena di routes kita menggunakan bypassAuth, 
+# server akan otomatis menganggap request ini datang dari User ID 13.
+
+
+### Variabel Konfigurasi
+@baseUrl = http://localhost:5000/api/v1
+
+### 1. TEST REPORT - PERIODE MINGGU (Week)
+GET {{baseUrl}}/report/stats?period=week
+Content-Type: application/json
+
+### 2. TEST REPORT - PERIODE BULAN (Month)
+GET {{baseUrl}}/report/stats?period=month
+Content-Type: application/json
+
+### 3. TEST REPORT - PERIODE TAHUN (Year)
+GET {{baseUrl}}/report/stats?period=year
+Content-Type: application/json
