@@ -25,6 +25,8 @@ const landingRoutes = require("./routes/landingRoutes");
 const paymentRoutes = require("./routes/paymentRoutes");
 const workflowRoutes = require("./routes/workflowRoutes");
 const eventRoutes = require("./routes/eventRoutes");
+const dashboardRoutes = require('./routes/dashboardRoutes');
+const reportRoutes = require('./routes/reportRoutes');
 
 // ==========================================
 // 1. MIDDLEWARE GLOBAL & KEAMANAN
@@ -117,6 +119,9 @@ app.use("/api/v1/payment", paymentRoutes);
 
 app.use("/api/v1/workflow", workflowRoutes);
 
+app.use('/api/v1/dashboard', dashboardRoutes);
+
+app.use('/api/v1/report', reportRoutes);
 // ==========================================
 // 3. ERROR HANDLING (PENANGKAP ERROR)
 // ==========================================
