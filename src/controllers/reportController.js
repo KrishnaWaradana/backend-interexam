@@ -2,36 +2,13 @@ const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 const { startOfWeek, startOfMonth, startOfYear, format } = require('date-fns');
 
-/**
- * Helper to build soal filter based on user role
- */
-const getSoalFilters = (role, id_user, startDateISO) => {
-    const baseFilter = { tanggal_pembuatan: { gte: startDateISO } };
-
-    switch (role) {
-        case 'Contributor':
-            return { ...baseFilter, id_contributor: id_user };
-        case 'Validator':
-            return { 
-                ...baseFilter, 
-                validasi: { some: { id_validator: id_user } } 
-            };
-        case 'Admin':
-            return { ...baseFilter, status: { not: 'draft' } };
-        default:
-            return baseFilter;
-    }
-};
-
 const getReportData = async (req, res) => {
     try {
         const { period = 'year' } = req.query;
-        const id_user = req.user.id_user || req.user.id;
-        const role = req.user.role;
+        const userId = req.user.id_user || req.user.id;
+        const userRole = req.user.role;
 
-        if (!id_user) return res.status(401).json({ message: "Unauthorized access" });
-
-        // 1. Time Range Setup
+        // 1. Setup Range Waktu
         const now = new Date();
         const dateMap = {
             week: startOfWeek(now, { weekStartsOn: 1 }),
@@ -39,50 +16,76 @@ const getReportData = async (req, res) => {
             year: startOfYear(now)
         };
         const startDate = dateMap[period] || dateMap.year;
-        const startDateISO = startDate.toISOString();
 
-        // 2. Build Dynamic Filters
-        const soalWhereClause = getSoalFilters(role, id_user, startDateISO);
-        const globalAccess = role === 'Admin';
+        // 2. Filter Role (Berdasarkan Skema Soal kamu)
+        const soalWhere = {};
+        if (userRole === 'Contributor') soalWhere.id_contributor = userId;
+        if (userRole === 'Validator') soalWhere.validasi = { some: { id_validator: userId } };
+        if (userRole === 'Admin') soalWhere.status = { not: 'draft' };
 
         // 3. Parallel Database Queries
-        const [totalSub, totalPaket, totalEvent, incomeAgg, subjects, totals, approvedCount, transactions] = await Promise.all([
+        const [
+            totalSub, 
+            totalPaket, 
+            totalEvent, 
+            incomeAgg, 
+            subjects, 
+            totalSoal, 
+            approvedSoal, 
+            transactions,
+            activeSubCount // Query Subscriber Aktif Real-time
+        ] = await Promise.all([
             prisma.subscribers.count(),
-            prisma.paketSoal.count({ where: globalAccess ? {} : { id_creator: id_user } }),
+            prisma.paketSoal.count({ where: userRole === 'Admin' ? {} : { id_creator: userId } }),
             prisma.event.count(),
+            // --- BAGIAN INI SUDAH DISINKRONKAN DENGAN GAMBAR PRISMA KAMU ---
             prisma.transaksi.aggregate({
                 _sum: { amount: true },
-                where: { status: 'settlement', ...(globalAccess ? {} : { id_subscriber: id_user }) }
+                where: { 
+                    status: 'success', // <--- Diganti dari 'settlement' ke 'success'
+                    ...(userRole === 'Admin' ? {} : { id_subscriber: userId }) 
+                }
             }),
             prisma.subjects.findMany({
                 select: {
                     nama_subject: true,
-                    topics: { select: { _count: { select: { soal: { where: soalWhereClause } } } } }
+                    topics: { select: { _count: { select: { soal: { where: soalWhere } } } } }
                 }
             }),
-            prisma.soal.count({ where: soalWhereClause }),
-            prisma.soal.count({ where: { ...soalWhereClause, status: 'disetujui' } }),
+            prisma.soal.count({ where: soalWhere }),
+            prisma.soal.count({ where: { ...soalWhere, status: 'disetujui' } }),
             prisma.transaksi.findMany({
-                where: { status: 'settlement', created_at: { gte: startDate }, ...(globalAccess ? {} : { id_subscriber: id_user }) },
+                where: { 
+                    status: 'success', // <--- Sesuai database kamu
+                    created_at: { gte: startDate },
+                    ...(userRole === 'Admin' ? {} : { id_subscriber: userId }) 
+                },
                 orderBy: { created_at: 'asc' }
+            }),
+            // Menghitung subscriber yang punya paket berlangganan 'active'
+            prisma.subscribers.count({
+                where: {
+                    subscribePaket: {
+                        some: { status: 'active' }
+                    }
+                }
             })
         ]);
 
-        // 4. Data Transformation
-        const barData = subjects
-            .map(s => ({
-                label: s.nama_subject,
-                value: s.topics.reduce((acc, curr) => acc + curr._count.soal, 0)
-            }))
-            .filter(item => item.value > 0);
-
+        // 4. Data Processing (Revenue per Waktu)
         const revenueMap = {};
         transactions.forEach(t => {
             const key = format(t.created_at, period === 'year' ? 'MMM' : 'dd MMM');
-            revenueMap[key] = (revenueMap[key] || 0) + Number(t.amount);
+            revenueMap[key] = (revenueMap[key] || 0) + (Number(t.amount) || 0);
         });
 
-        // 5. Professional Response Structure
+        // 5. Subject Data Processing (Bar Chart)
+        const barData = subjects.map(s => ({
+            label: s.nama_subject || "N/A",
+            value: s.topics.reduce((acc, curr) => acc + curr._count.soal, 0)
+        })).filter(item => item.value > 0);
+
+        // 6. Response JSON yang Bersih
         return res.status(200).json({
             success: true,
             summary: {
@@ -94,25 +97,21 @@ const getReportData = async (req, res) => {
             filteredData: {
                 lineData: {
                     current: Object.values(revenueMap).length ? Object.values(revenueMap) : [0],
-                    previous: [0], 
+                    previous: [0],
                     labels: Object.keys(revenueMap).length ? Object.keys(revenueMap) : ['No Data']
                 },
-                barData: barData.length ? barData : [{ label: 'N/A', value: 0 }],
                 pieData: [
-                    { label: "Disetujui", value: approvedCount, color: "#60a5fa" },
-                    { label: "Proses/Lainnya", value: totals - approvedCount, color: "#9ca3af" }
+                    { label: "Subscriber Aktif", value: activeSubCount, color: "#60a5fa" },
+                    { label: "Non-Aktif", value: Math.max(0, totalSub - activeSubCount), color: "#9ca3af" }
                 ],
-                donutPercent: totals > 0 ? Math.round((approvedCount / totals) * 100) : 0
+                barData: barData.length ? barData : [{ label: 'N/A', value: 0 }],
+                donutPercent: totalSoal > 0 ? Math.round((approvedSoal / totalSoal) * 100) : 0
             }
         });
 
     } catch (error) {
-        console.error("[REPORT_CONTROLLER_ERROR]:", error);
-        return res.status(500).json({ 
-            success: false, 
-            message: "Internal Server Error", 
-            error: process.env.NODE_ENV === 'development' ? error.message : undefined 
-        });
+        console.error("[REPORT_ERROR]:", error);
+        return res.status(500).json({ success: false, message: "Server Error" });
     }
 };
 
