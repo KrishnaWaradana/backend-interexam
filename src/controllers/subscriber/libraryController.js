@@ -362,7 +362,10 @@ exports.getAllPaketsWithProgress = async (req, res) => {
           soalPaket: true,
           _count: { select: { paketAttempt: true } },
           paketAttempt: {
-            where: { subscribers_id_subscriber: id_subscriber },
+            where: {
+              subscribers_id_subscriber: id_subscriber,
+              id_event: null,
+            },
             include: { history: { select: { id_jawaban: true } } },
             orderBy: { started_at: "desc" },
             take: 1,
