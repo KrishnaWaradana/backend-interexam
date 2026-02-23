@@ -711,3 +711,40 @@ Content-Type: application/json
 ### 3. TEST REPORT - PERIODE TAHUN (Year)
 GET {{baseUrl}}/report/stats?period=year
 Content-Type: application/json
+
+
+
+### Variabel Dasar
+@baseUrl = http://localhost:5000/api/v1
+@contentType = application/json
+
+### ---------------------------------------------------------
+### 1. TES SEBAGAI ADMIN (ID: 13)
+### Ekspektasi: Muncul SEMUA data dari semua user.
+### ---------------------------------------------------------
+GET {{baseUrl}}/report/stats?period=year
+Content-Type: {{contentType}}
+x-test-id: 13
+x-test-role: Admin
+
+###
+
+### ---------------------------------------------------------
+### 2. TES SEBAGAI CONTRIBUTOR (ID: 12)
+### Ekspektasi: Summary Paket & Bar Chart hanya milik ID 12.
+### ---------------------------------------------------------
+GET {{baseUrl}}/report/stats?period=month
+Content-Type: {{contentType}}
+x-test-id: 12
+x-test-role: Contributor
+
+###
+
+### ---------------------------------------------------------
+### 3. TES SEBAGAI VALIDATOR (ID: 14)
+### Ekspektasi: Statistik Soal hanya yang ditangani ID 14.
+### ---------------------------------------------------------
+GET {{baseUrl}}/report/stats?period=week
+Content-Type: {{contentType}}
+x-test-id: 14
+x-test-role: Validator
