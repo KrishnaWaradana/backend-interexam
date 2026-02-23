@@ -9,16 +9,15 @@ const getReportData = async (req, res) => {
     try {
         const { period = 'year' } = req.query;
         
-        // --- LOGIKA TEST: BISA JWT ATAU HEADER (KHUSUS TEST ID 13) ---
+        // --- LOGIKA TEST ID 13 ---
         const userId = req.user?.id_user || req.user?.id || parseInt(req.headers['x-test-id']) || 13;
         const userRole = req.user?.role || req.headers['x-test-role'] || 'Admin';
 
         const now = new Date();
         let startDate, endDate, formatKey, intervals;
 
-        // 1. SET RANGE WAKTU (Interval agar chart tidak kosong)
         if (period === 'week') {
-            startDate = subDays(now, 13); // 14 hari terakhir agar data Feb Mas masuk
+            startDate = subDays(now, 13); 
             endDate = now;
             formatKey = 'dd MMM';
             intervals = eachDayOfInterval({ start: startDate, end: endDate });
@@ -34,7 +33,7 @@ const getReportData = async (req, res) => {
             intervals = eachMonthOfInterval({ start: startDate, end: endDate });
         }
 
-        // 2. QUERY DATABASE (SEMUA REAL DARI DB)
+        // 2. QUERY DATABASE (FOKUS DISETUJUI & DITOLAK)
         const [
             incomeAgg, 
             transactions, 
@@ -42,28 +41,25 @@ const getReportData = async (req, res) => {
             activeSubs, 
             subjects, 
             totalSoalCount,
-            totalEventCount, // <--- REAL DARI DB
-            totalPaketCount
+            totalEventCount,
+            totalPaketCount,
+            approvedSoal, // Status: disetujui
+            rejectedSoal  // Status: ditolak
         ] = await Promise.all([
-            // Hitung Pendapatan
             prisma.transaksi.aggregate({
                 _sum: { amount: true },
                 where: { status: 'success' }
             }),
-            // Data Transaksi untuk Chart
             prisma.transaksi.findMany({
                 where: { 
                     status: 'success', 
                     created_at: { gte: startDate, lte: endDate } 
-                },
-                orderBy: { created_at: 'asc' }
+                }
             }),
-            // Total Data User/Paket/Event
             prisma.subscribers.count(),
             prisma.subscribers.count({
                 where: { subscribePaket: { some: { status: 'active' } } }
             }),
-            // Soal per Subject
             prisma.subjects.findMany({
                 select: {
                     nama_subject: true,
@@ -71,16 +67,16 @@ const getReportData = async (req, res) => {
                 }
             }),
             prisma.soal.count(),
-            prisma.event.count(),      // <--- HITUNG TOTAL EVENT
-            prisma.paketSoal.count()
+            prisma.event.count(),
+            prisma.paketSoal.count(),
+            // Filter Status Soal
+            prisma.soal.count({ where: { status: 'disetujui' } }),
+            prisma.soal.count({ where: { status: 'ditolak' } })
         ]);
 
-        // 3. MAPPING DATA REVENUE (Template Jan-Des)
+        // 3. MAPPING REVENUE
         const revenueMap = {};
-        intervals.forEach(date => {
-            revenueMap[format(date, formatKey)] = 0;
-        });
-
+        intervals.forEach(date => { revenueMap[format(date, formatKey)] = 0; });
         transactions.forEach(t => {
             const label = format(t.created_at, formatKey);
             if (revenueMap.hasOwnProperty(label)) {
@@ -88,13 +84,7 @@ const getReportData = async (req, res) => {
             }
         });
 
-        // Mapping Bar Chart (Soal per Mapel)
-        const barData = subjects.map(s => ({
-            label: s.nama_subject || "N/A",
-            value: s.topics.reduce((acc, curr) => acc + curr._count.soal, 0)
-        })).filter(item => item.value > 0);
-
-        // 4. RESPONSE JSON PROFESIONAL
+        // 4. RESPONSE JSON
         return res.status(200).json({
             success: true,
             summary: {
@@ -102,7 +92,7 @@ const getReportData = async (req, res) => {
                 totalPaket: totalPaketCount || 0,
                 totalIncome: Number(incomeAgg._sum.amount) || 0,
                 totalSoal: totalSoalCount || 0,
-                totalEvent: totalEventCount // <--- HASIL DATABASE (Muncul angka, bukan string "4x")
+                totalEvent: totalEventCount || 0
             },
             filteredData: {
                 lineData: {
@@ -113,12 +103,24 @@ const getReportData = async (req, res) => {
                     { label: "Aktif", value: activeSubs || 0, color: "#60a5fa" },
                     { label: "Non-Aktif", value: Math.max(0, (totalSub || 0) - (activeSubs || 0)), color: "#9ca3af" }
                 ],
-                barData: barData.length ? barData : [{ label: 'N/A', value: 0 }]
+                barData: subjects.map(s => ({
+                    label: s.nama_subject,
+                    value: s.topics.reduce((acc, curr) => acc + curr._count.soal, 0)
+                })).filter(i => i.value > 0),
+                
+                // GRAFIK BULAT: DISESUAIKAN HANYA DISETUJUI & DITOLAK
+                statusSoalChart: [
+                    { label: "Disetujui", value: approvedSoal, color: "#10b981" },
+                    { label: "Ditolak", value: rejectedSoal, color: "#ef4444" }
+                ],
+                // Persentase Berdasarkan Soal yang Sudah Diproses (Disetujui / (Disetujui + Ditolak))
+                donutPercent: (approvedSoal + rejectedSoal) > 0 
+                    ? Math.round((approvedSoal / (approvedSoal + rejectedSoal)) * 100) 
+                    : 0
             }
         });
 
     } catch (error) {
-        console.error("REPORT_ERROR:", error);
         res.status(500).json({ success: false, message: error.message });
     }
 };
