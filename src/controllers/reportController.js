@@ -1,56 +1,116 @@
 const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
-const { startOfWeek, startOfMonth, startOfYear, endOfDay } = require('date-fns');
+const { startOfWeek, startOfMonth, startOfYear, format } = require('date-fns');
+
 
 const getReportData = async (req, res) => {
     try {
-        const { period } = req.query; // 'week', 'month', 'year'
-
-        // --- 1. DATA KESELURUHAN (STAT CARD DI ATAS) ---
-        const totalSub = await prisma.subscribers.count();
-        const totalPaket = await prisma.paketSoal.count();
-        const totalEvent = await prisma.event.count();
+        const { period } = req.query;
         
-        const incomeAgg = await prisma.transaksi.aggregate({
-            _sum: { amount: true },
-            where: { status: 'settlement' }
-        });
+        // Mengambil ID dan Role dari middleware auth
+        const id_user = req.user.id_user || req.user.id;
+        const role = req.user.role; 
 
-        // --- 2. LOGIKA TANGGAL UNTUK FILTER ---
-        let startDate;
-        let labels = [];
-        const now = new Date();
-
-        if (period === 'week') {
-            startDate = startOfWeek(now, { weekStartsOn: 1 }); // Senin
-            labels = ["Sen", "Sel", "Rab", "Kam", "Jum", "Sab", "Min"];
-        } else if (period === 'month') {
-            startDate = startOfMonth(now);
-            labels = ["Mgg 1", "Mgg 2", "Mgg 3", "Mgg 4"];
-        } else {
-            startDate = startOfYear(now);
-            labels = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"];
+        if (!id_user) {
+            return res.status(401).json({ message: "Sesi tidak valid." });
         }
 
-        // --- 3. QUERY DATA TERFILTER ---
-        
-        // A. Bar Chart (Sudah berhasil tadi)
+        // 1. Logika Rentang Waktu
+        const now = new Date();
+        let startDate;
+        if (period === 'week') {
+            startDate = startOfWeek(now, { weekStartsOn: 1 });
+        } else if (period === 'month') {
+            startDate = startOfMonth(now);
+        } else {
+            startDate = startOfYear(now);
+        }
+
+        const startDateISO = startDate.toISOString();
+
+        // 2. KUNCI FILTER: Logika Privasi sesuai Role
+        let soalWhereClause = {
+            tanggal_pembuatan: { gte: startDateISO }
+        };
+
+        if (role === 'Contributor') {
+            // Hanya miliknya sendiri (bebas status apapun)
+            soalWhereClause.id_contributor = id_user;
+        } 
+        else if (role === 'Validator') {
+            // Hanya soal yang berhubungan dengan ID validator ini di tabel validasi
+            soalWhereClause.validasi = {
+                some: { id_validator: id_user }
+            };
+        } 
+        else if (role === 'Admin') {
+            // Admin lihat semua, tapi dilarang lihat yang masih 'draft'
+            soalWhereClause.status = { not: 'draft' };
+        }
+
+        // 3. Query Summary (Stat Cards)
+        const [totalSub, totalPaket, totalEvent, incomeAgg] = await Promise.all([
+            prisma.subscribers.count(),
+            prisma.paketSoal.count({ 
+                where: role === 'Admin' ? {} : { id_creator: id_user } 
+            }),
+            prisma.event.count(),
+            prisma.transaksi.aggregate({
+                _sum: { amount: true },
+                where: { 
+                    status: 'settlement',
+                    ...(role === 'Admin' ? {} : { id_subscriber: id_user }) 
+                }
+            })
+        ]);
+
+        // 4. Query Bar Chart (Soal per Subject)
         const subjects = await prisma.subjects.findMany({
-            include: {
-                _count: { select: { topics: true } }
+            select: {
+                nama_subject: true,
+                topics: {
+                    select: {
+                        _count: {
+                            select: { 
+                                soal: { where: soalWhereClause } 
+                            }
+                        }
+                    }
+                }
             }
         });
 
-        // B. Line Chart (Pendapatan terfilter)
-        const revenueData = await prisma.transaksi.findMany({
+        const barData = subjects.map(s => ({
+            label: s.nama_subject,
+            value: s.topics.reduce((acc, curr) => acc + curr._count.soal, 0)
+        })).filter(item => item.value > 0);
+
+        // 5. Query Donut Chart (Status Soal)
+        const totalSoal = await prisma.soal.count({ where: soalWhereClause });
+        const approvedSoal = await prisma.soal.count({ 
             where: { 
-                created_at: { gte: startDate },
-                status: 'settlement'
-            },
-            select: { amount: true, created_at: true }
+                ...soalWhereClause, 
+                status: 'disetujui' 
+            } 
         });
 
-        // --- 4. KIRIM RESPONS ---
+        // 6. Query Line Chart (Pendapatan)
+        const transactions = await prisma.transaksi.findMany({
+            where: { 
+                ...(role === 'Admin' ? {} : { id_subscriber: id_user }),
+                status: 'settlement',
+                created_at: { gte: startDate }
+            },
+            orderBy: { created_at: 'asc' }
+        });
+
+        const revenueMap = {};
+        transactions.forEach(t => {
+            const key = format(t.created_at, period === 'year' ? 'MMM' : 'dd MMM');
+            revenueMap[key] = (revenueMap[key] || 0) + Number(t.amount);
+        });
+
+        // 7. Response JSON Final
         res.json({
             summary: {
                 totalSub,
@@ -60,26 +120,24 @@ const getReportData = async (req, res) => {
             },
             filteredData: {
                 lineData: {
-                    current: revenueData.map(r => r.amount), // Data asli
-                    previous: [100000, 200000], // Dummy biar gak crash
-                    labels: labels
+                    current: Object.values(revenueMap).length ? Object.values(revenueMap) : [0],
+                    labels: Object.keys(revenueMap).length ? Object.keys(revenueMap) : ['Belum ada data']
                 },
-                legendText: period === 'week' ? ["Minggu Ini", "Minggu Lalu"] : ["Tahun Ini", "Tahun Lalu"],
-                barData: subjects.map(s => ({
-                    label: s.nama_subject,
-                    value: s._count?.topics || 0
-                })),
+                barData: barData.length ? barData : [{ label: 'N/A', value: 0 }],
                 pieData: [
-                    { label: "Aktif", value: totalSub, color: "#60a5fa" },
-                    { label: "Non-Aktif", value: 2, color: "#9ca3af" }
+                    { label: "Disetujui", value: approvedSoal, color: "#60a5fa" },
+                    { label: "Proses/Lainnya", value: totalSoal - approvedSoal, color: "#9ca3af" }
                 ],
-                donutPercent: 75 
+                donutPercent: totalSoal > 0 ? Math.round((approvedSoal / totalSoal) * 100) : 0
             }
         });
 
     } catch (error) {
-        console.error("DETAIL ERROR:", error);
-        res.status(500).json({ message: "Error", error: error.message });
+        console.error("ERROR_REPORT:", error);
+        res.status(500).json({ 
+            message: "Gagal memproses laporan", 
+            error: error.message 
+        });
     }
 };
 
