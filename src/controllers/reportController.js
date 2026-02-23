@@ -1,117 +1,113 @@
 const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
-const { startOfWeek, startOfMonth, startOfYear, format } = require('date-fns');
+const { 
+    startOfWeek, startOfMonth, startOfYear, 
+    format, eachDayOfInterval, eachMonthOfInterval, endOfMonth, endOfYear, subDays 
+} = require('date-fns');
 
 const getReportData = async (req, res) => {
     try {
         const { period = 'year' } = req.query;
-        const userId = req.user.id_user || req.user.id;
-        const userRole = req.user.role;
-
-        // 1. Setup Range Waktu
         const now = new Date();
-        const dateMap = {
-            week: startOfWeek(now, { weekStartsOn: 1 }),
-            month: startOfMonth(now),
-            year: startOfYear(now)
-        };
-        const startDate = dateMap[period] || dateMap.year;
+        
+        let startDate, endDate, intervals, formatKey;
 
-        // 2. Filter Role (Berdasarkan Skema Soal kamu)
-        const soalWhere = {};
-        if (userRole === 'Contributor') soalWhere.id_contributor = userId;
-        if (userRole === 'Validator') soalWhere.validasi = { some: { id_validator: userId } };
-        if (userRole === 'Admin') soalWhere.status = { not: 'draft' };
+        // --- 1. MEMBUAT TEMPLATE WAKTU (AGAR CHART TIDAK KOSONG) ---
+        if (period === 'week') {
+            // Ambil 7 hari terakhir
+            startDate = subDays(now, 6); 
+            endDate = now;
+            intervals = eachDayOfInterval({ start: startDate, end: endDate });
+            formatKey = 'dd MMM';
+        } else if (period === 'month') {
+            // Ambil dari awal bulan ini sampai akhir bulan ini
+            startDate = startOfMonth(now);
+            endDate = endOfMonth(now);
+            intervals = eachDayOfInterval({ start: startDate, end: endDate });
+            formatKey = 'dd MMM';
+        } else {
+            // Tahun: Ambil dari Jan sampai Des
+            startDate = startOfYear(now);
+            endDate = endOfYear(now);
+            intervals = eachMonthOfInterval({ start: startDate, end: endDate });
+            formatKey = 'MMM';
+        }
 
-        // 3. Parallel Database Queries
-        const [
-            totalSub, 
-            totalPaket, 
-            totalEvent, 
-            incomeAgg, 
-            subjects, 
-            totalSoal, 
-            approvedSoal, 
-            transactions,
-            activeSubCount // Query Subscriber Aktif Real-time
-        ] = await Promise.all([
-            prisma.subscribers.count(),
-            prisma.paketSoal.count({ where: userRole === 'Admin' ? {} : { id_creator: userId } }),
-            prisma.event.count(),
-            // --- BAGIAN INI SUDAH DISINKRONKAN DENGAN GAMBAR PRISMA KAMU ---
-            prisma.transaksi.aggregate({
-                _sum: { amount: true },
+        // --- 2. QUERY DATABASE ---
+        const [transactions, subjects, totalSub, activeSubCount, totalSoal, approvedSoal] = await Promise.all([
+            prisma.transaksi.findMany({
                 where: { 
-                    status: 'success', // <--- Diganti dari 'settlement' ke 'success'
-                    ...(userRole === 'Admin' ? {} : { id_subscriber: userId }) 
+                    status: 'success', 
+                    created_at: { gte: startDate, lte: endDate } 
                 }
             }),
             prisma.subjects.findMany({
-                select: {
-                    nama_subject: true,
-                    topics: { select: { _count: { select: { soal: { where: soalWhere } } } } }
-                }
-            }),
-            prisma.soal.count({ where: soalWhere }),
-            prisma.soal.count({ where: { ...soalWhere, status: 'disetujui' } }),
-            prisma.transaksi.findMany({
-                where: { 
-                    status: 'success', // <--- Sesuai database kamu
-                    created_at: { gte: startDate },
-                    ...(userRole === 'Admin' ? {} : { id_subscriber: userId }) 
-                },
-                orderBy: { created_at: 'asc' }
-            }),
-            // Menghitung subscriber yang punya paket berlangganan 'active'
-            prisma.subscribers.count({
-                where: {
-                    subscribePaket: {
-                        some: { status: 'active' }
+                include: {
+                    topics: {
+                        include: { _count: { select: { soal: true } } }
                     }
                 }
-            })
+            }),
+            prisma.subscribers.count(),
+            prisma.subscribers.count({
+                where: { subscribePaket: { some: { status: 'active' } } }
+            }),
+            prisma.soal.count(),
+            prisma.soal.count({ where: { status: 'disetujui' } })
         ]);
 
-        // 4. Data Processing (Revenue per Waktu)
+        // --- 3. PROSES DATA PENDAPATAN (LOGIKA TEMPLATE) ---
         const revenueMap = {};
-        transactions.forEach(t => {
-            const key = format(t.created_at, period === 'year' ? 'MMM' : 'dd MMM');
-            revenueMap[key] = (revenueMap[key] || 0) + (Number(t.amount) || 0);
+        
+        // Buat "Wadah" kosong dulu (isinya 0) berdasarkan interval waktu
+        intervals.forEach(date => {
+            const label = format(date, formatKey);
+            revenueMap[label] = 0; 
         });
 
-        // 5. Subject Data Processing (Bar Chart)
-        const barData = subjects.map(s => ({
-            label: s.nama_subject || "N/A",
-            value: s.topics.reduce((acc, curr) => acc + curr._count.soal, 0)
-        })).filter(item => item.value > 0);
+        // Masukkan data transaksi asli ke dalam wadah yang sudah ada
+        transactions.forEach(t => {
+            const label = format(new Date(t.created_at), formatKey);
+            if (revenueMap.hasOwnProperty(label)) {
+                revenueMap[label] += Number(t.amount) || 0;
+            }
+        });
 
-        // 6. Response JSON yang Bersih
+        // --- 4. PROSES BAR DATA (TOTAL SOAL PER SUBJECT) ---
+        const barData = subjects.map(s => {
+            const totalPerSubject = s.topics.reduce((acc, curr) => acc + (curr._count?.soal || 0), 0);
+            return {
+                label: s.nama_subject,
+                value: totalPerSubject
+            };
+        }).filter(item => item.value > 0);
+
+        // --- 5. RETURN DATA KE FRONTEND ---
         return res.status(200).json({
             success: true,
             summary: {
                 totalSub,
-                totalPaket,
-                totalIncome: Number(incomeAgg._sum.amount) || 0,
-                totalEvent
+                activeSub: activeSubCount,
+                totalSoal,
+                approvedRate: totalSoal > 0 ? Math.round((approvedSoal / totalSoal) * 100) : 0
             },
             filteredData: {
                 lineData: {
-                    current: Object.values(revenueMap).length ? Object.values(revenueMap) : [0],
-                    previous: [0],
-                    labels: Object.keys(revenueMap).length ? Object.keys(revenueMap) : ['No Data']
+                    // Ini pasti ada isinya, minimal angka 0 flat
+                    labels: Object.keys(revenueMap), 
+                    current: Object.values(revenueMap)
                 },
-                pieData: [
-                    { label: "Subscriber Aktif", value: activeSubCount, color: "#60a5fa" },
-                    { label: "Non-Aktif", value: Math.max(0, totalSub - activeSubCount), color: "#9ca3af" }
-                ],
                 barData: barData.length ? barData : [{ label: 'N/A', value: 0 }],
-                donutPercent: totalSoal > 0 ? Math.round((approvedSoal / totalSoal) * 100) : 0
+                pieData: [
+                    { label: "Aktif", value: activeSubCount, color: "#60a5fa" },
+                    { label: "Non-Aktif", value: Math.max(0, totalSub - activeSubCount), color: "#ef4444" }
+                ]
             }
         });
 
     } catch (error) {
-        console.error("[REPORT_ERROR]:", error);
-        return res.status(500).json({ success: false, message: "Server Error" });
+        console.error("ERROR_REPORT:", error);
+        res.status(500).json({ success: false, message: error.message });
     }
 };
 
