@@ -12,7 +12,7 @@ const getReportData = async (req, res) => {
         
         let startDate, endDate, intervals, formatKey;
 
-        // --- 1. SETUP RANGE WAKTU (AKALIN BIAR CHART GAK KOSONG) ---
+        // --- 1. SETUP RANGE WAKTU (Ngakalin Chart Biar Selalu Ada Label) ---
         if (period === 'week') {
             startDate = subDays(now, 6); // 7 hari terakhir
             endDate = now;
@@ -24,14 +24,14 @@ const getReportData = async (req, res) => {
             intervals = eachDayOfInterval({ start: startDate, end: endDate });
             formatKey = 'dd MMM';
         } else {
-            // Tahun: Paksa Muncul dari Januari sampai Desember
+            // Tahun: Paksa muncul Januari - Desember
             startDate = startOfYear(now);
             endDate = endOfYear(now);
             intervals = eachMonthOfInterval({ start: startDate, end: endDate });
             formatKey = 'MMM';
         }
 
-        // --- 2. DATABASE QUERIES (SESUAI CONTROLLER KAMU) ---
+        // --- 2. DATABASE QUERIES (Status: success) ---
         const [
             totalSub, 
             totalPaket, 
@@ -42,13 +42,15 @@ const getReportData = async (req, res) => {
             transactions,
             activeSubCount
         ] = await Promise.all([
-            prisma.users.count({ where: { role: 'User' } }), // Sesuaikan model user kamu
+            // Hitung User dengan Role User (Subscriber)
+            prisma.users.count({ where: { role: 'User' } }), 
             prisma.paketLangganan.count(),
+            // Pendapatan Total (Status: success)
             prisma.transaksi.aggregate({
                 _sum: { amount: true },
-                where: { status_pembayaran: 'settlement' } // Pakai status sukses midtrans/db kamu
+                where: { status: 'success' } 
             }),
-            // Query Soal per Subject (Logic Badak: Ambil semua lalu hitung di JS)
+            // Data Soal per Subject
             prisma.subjects.findMany({
                 include: {
                     topics: {
@@ -58,19 +60,18 @@ const getReportData = async (req, res) => {
             }),
             prisma.soal.count(),
             prisma.soal.count({ where: { status: 'disetujui' } }),
-            // Query Pendapatan berdasar Range Waktu
+            // Data Transaksi untuk Chart (Status: success)
             prisma.transaksi.findMany({
                 where: { 
-                    status_pembayaran: 'settlement', 
+                    status: 'success', 
                     created_at: { gte: startDate, lte: endDate } 
                 },
                 orderBy: { created_at: 'asc' }
             }),
-            // --- FIX SUBSCRIBER AKTIF ---
-            // Mengikuti logic controller yang kamu kirim (status: 'active')
+            // Subscriber Aktif (Cek yang punya paket belum expired & status success)
             prisma.userSubscription.count({
                 where: {
-                    status_pembayaran: 'settlement',
+                    status: 'success', // Pakai success sesuai database kamu
                     tanggal_berakhir: { gte: now }
                 }
             })
@@ -79,13 +80,13 @@ const getReportData = async (req, res) => {
         // --- 3. MAPPING PENDAPATAN (LINE CHART) ---
         const revenueMap = {};
         
-        // Inisialisasi label dulu (Biar Januari-Desember muncul walau data kosong)
+        // Buat laci kosong dulu (0) sesuai label waktu
         intervals.forEach(date => {
             const label = format(date, formatKey);
             revenueMap[label] = 0;
         });
 
-        // Masukkan data dari transaksi
+        // Masukkan data transaksi asli ke laci yang pas
         transactions.forEach(t => {
             const label = format(new Date(t.created_at), formatKey);
             if (revenueMap.hasOwnProperty(label)) {
@@ -93,8 +94,9 @@ const getReportData = async (req, res) => {
             }
         });
 
-        // --- 4. MAPPING BAR CHART (SOAL PER SUBJECT) ---
+        // --- 4. MAPPING BAR DATA (FIX TOTAL SOAL) ---
         const barData = subjectsData.map(s => {
+            // Jumlahkan soal dari semua topik di bawah subjek ini
             const count = s.topics.reduce((acc, curr) => acc + (curr._count?.soal || 0), 0);
             return {
                 label: s.nama_subject,
