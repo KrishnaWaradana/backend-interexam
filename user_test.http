@@ -748,3 +748,49 @@ GET {{baseUrl}}/report/stats?period=week
 Content-Type: {{contentType}}
 x-test-id: 14
 x-test-role: Validator
+
+
+
+@baseUrl = http://localhost:5000/api/v1
+@contentType = application/json
+
+### 1. Test Filter: Tahun Ini (Default)
+### Perhatikan penulisan /report/stats sesuai route express
+GET {{baseUrl}}/report/stats?period=year
+Content-Type: {{contentType}}
+
+### 2. Test Filter: Bulan Ini
+GET {{baseUrl}}/report/stats?period=month
+Content-Type: {{contentType}}
+
+### 3. Test Filter: Minggu Ini
+GET {{baseUrl}}/report/stats?period=week
+Content-Type: {{contentType}}
+
+
+@baseUrl = http://localhost:5000/api/v1
+@contentType = application/json
+
+### ---------------------------------------------------------
+### 1. CEK FILTER: TAHUNAN (Comparison: 2026 vs 2025)
+### Ekspektasi: labels berisi nama bulan (Jan, Feb, ...), 
+### 'current' adalah data 2026, 'last' adalah data 2025.
+### ---------------------------------------------------------
+GET {{baseUrl}}/report/stats?period=year
+Content-Type: {{contentType}}
+
+### ---------------------------------------------------------
+### 2. CEK FILTER: BULANAN (Comparison: Bulan Ini vs Bulan Lalu)
+### Ekspektasi: labels berisi tanggal (misal: 01 Feb, 02 Feb),
+### 'current' data bulan berjalan, 'last' data bulan sebelumnya.
+### ---------------------------------------------------------
+GET {{baseUrl}}/report/stats?period=month
+Content-Type: {{contentType}}
+
+### ---------------------------------------------------------
+### 3. CEK FILTER: MINGGUAN (Comparison: Minggu Ini vs Minggu Lalu)
+### Ekspektasi: labels berisi nama hari (Sen, Sel, ...),
+### 'current' 7 hari terakhir, 'last' 7 hari sebelum itu.
+### ---------------------------------------------------------
+GET {{baseUrl}}/report/stats?period=week
+Content-Type: {{contentType}}
