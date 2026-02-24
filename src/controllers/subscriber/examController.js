@@ -433,7 +433,10 @@ exports.getEventPaketDetail = async (req, res) => {
             paketSoal: {
               include: {
                 paketAttempt: {
-                  where: { subscribers_id_subscriber: id_subscriber },
+                  where: {
+                    subscribers_id_subscriber: id_subscriber,
+                    id_event: id_event,
+                  },
                   orderBy: { started_at: "desc" },
                   take: 1,
                 },
@@ -577,6 +580,278 @@ exports.getEventPaketDetail = async (req, res) => {
     });
   } catch (error) {
     console.error("Error Get Event Paket Detail:", error);
+    res.status(500).json({ status: "error", message: error.message });
+  }
+};
+
+exports.getEventUserReport = async (req, res) => {
+  try {
+    const id_subscriber = parseInt(req.user.id);
+    const id_event = parseInt(req.params.id_event); // Misal dari URL: /events/:id_event/report
+
+    // 1. Ambil Data Event beserta Paket Soal & Jumlah Soal
+    const event = await prisma.event.findUnique({
+      where: { id_event },
+      include: {
+        eventPaket: {
+          orderBy: { id_event_paket: "asc" }, // Agar urutan paketnya sesuai (Paket 1, Paket 2, dll)
+          include: {
+            paketSoal: {
+              include: {
+                _count: { select: { soalPaket: true } }, // Hitung total soal di paket ini
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (!event) {
+      return res.status(404).json({ message: "Event tidak ditemukan." });
+    }
+
+    // 2. Ambil Semua Pengerjaan (Attempt) User di Event Ini
+    const userAttempts = await prisma.paketAttempt.findMany({
+      where: {
+        id_event: id_event,
+        subscribers_id_subscriber: id_subscriber,
+        finished_at: { not: null }, // Hanya hitung yang sudah selesai di-submit
+      },
+      include: { history: true },
+    });
+
+    // 3. Siapkan Variabel Penampung untuk Akumulasi "Semua Paket"
+    let totalAllSoal = 0;
+    let totalAllBenar = 0;
+    let totalAllSalah = 0;
+    let totalAllLewat = 0;
+
+    // Objek utama yang akan dikirim ke Frontend
+    const reportData = {};
+
+    // 4. Kalkulasi Per Paket Soal
+    event.eventPaket.forEach((ep, index) => {
+      const paket = ep.paketSoal;
+      const totalSoal = paket._count.soalPaket;
+
+      // Cari attempt user untuk paket ini
+      const attempt = userAttempts.find(
+        (a) => a.paket_soal_id_paket_soal === paket.id_paket_soal,
+      );
+
+      let benar = 0;
+      let salah = 0;
+      let lewat = totalSoal; // Default dilewati semua
+      let score = 0;
+
+      if (attempt && attempt.history) {
+        // Hitung jawaban benar (skor > 0)
+        benar = attempt.history.filter((h) => h.skor_point > 0).length;
+        // Hitung jawaban salah (ada di history tapi skor 0)
+        salah = attempt.history.length - benar;
+        // Hitung yang dilewati (total soal - yang dikerjakan)
+        lewat = totalSoal - attempt.history.length;
+        // Hitung skor paket (Benar / Total Soal * 100)
+        score = totalSoal > 0 ? Math.round((benar / totalSoal) * 100) : 0;
+      }
+
+      // Akumulasi ke Total Keseluruhan
+      totalAllSoal += totalSoal;
+      totalAllBenar += benar;
+      totalAllSalah += salah;
+      totalAllLewat += lewat;
+
+      // Masukkan ke object response dengan key unik (misal: "paket_12", dsb)
+      // Key ini akan digunakan oleh Frontend di elemen <select> dropdown
+      reportData[`paket_${paket.id_paket_soal}`] = {
+        title: `Paket ${index + 1}: ${paket.nama_paket}`,
+        slug: slugify(paket.nama_paket), // Fungsi slugify (harus buat helper atau ganti pakai ID)
+        paketId: paket.id_paket_soal,
+        score,
+        benar,
+        salah,
+        lewat,
+        totalSoal,
+      };
+    });
+
+    // 5. Kalkulasi Skor Keseluruhan Event
+    const allScore =
+      totalAllSoal > 0 ? Math.round((totalAllBenar / totalAllSoal) * 100) : 0;
+
+    // Tambahkan data "all" ke object response
+    reportData["all"] = {
+      title: "Rata-rata Keseluruhan Event",
+      score: allScore,
+      benar: totalAllBenar,
+      salah: totalAllSalah,
+      lewat: totalAllLewat,
+      totalSoal: totalAllSoal,
+    };
+
+    // 6. Kirim Response
+    res.status(200).json({
+      status: "success",
+      data: {
+        event_title: event.nama_event,
+        report: reportData,
+      },
+    });
+  } catch (error) {
+    console.error("Get Event User Report Error:", error);
+    res.status(500).json({ status: "error", message: error.message });
+  }
+};
+
+// --- HELPER FUNCTION (Letakkan di luar atau gunakan library) ---
+function slugify(text) {
+  if (!text) return "";
+  return text
+    .toString()
+    .toLowerCase()
+    .replace(/\s+/g, "-") // Ganti spasi dengan -
+    .replace(/[^\w\-]+/g, "") // Hapus semua karakter non-word
+    .replace(/\-\-+/g, "-") // Ganti multiple - dengan satu -
+    .replace(/^-+/, "") // Trim - dari awal
+    .replace(/-+$/, ""); // Trim - dari akhir
+}
+
+exports.getEventLeaderboard = async (req, res) => {
+  try {
+    const id_event = parseInt(req.params.id_event);
+    const paketId = req.query.paketId || "all"; // 'all' atau ID paket spesifik
+
+    // 1. Ambil detail event untuk mengetahui "Total Soal Target"
+    const event = await prisma.event.findUnique({
+      where: { id_event },
+      include: {
+        eventPaket: {
+          include: {
+            paketSoal: {
+              include: {
+                _count: { select: { soalPaket: true } },
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (!event) {
+      return res.status(404).json({ message: "Event tidak ditemukan." });
+    }
+
+    // Hitung target maksimal soal (Sebagai pembagi nilai)
+    let totalSoalTarget = 0;
+    if (paketId === "all") {
+      // Jika "all", jumlahkan semua soal dari seluruh paket di event
+      totalSoalTarget = event.eventPaket.reduce(
+        (sum, ep) => sum + ep.paketSoal._count.soalPaket,
+        0,
+      );
+    } else {
+      // Jika spesifik, ambil jumlah soal dari paket itu saja
+      const targetPaket = event.eventPaket.find(
+        (ep) => ep.paketSoal.id_paket_soal === parseInt(paketId),
+      );
+      if (!targetPaket)
+        return res.status(404).json({ message: "Paket tidak valid." });
+      totalSoalTarget = targetPaket.paketSoal._count.soalPaket;
+    }
+
+    // 2. Ambil semua pengerjaan (attempt) yang SUDAH SELESAI di event ini
+    const whereClause = {
+      id_event: id_event,
+      finished_at: { not: null },
+    };
+
+    // Filter paket jika bukan "all"
+    if (paketId !== "all") {
+      whereClause.paket_soal_id_paket_soal = parseInt(paketId);
+    }
+
+    const attempts = await prisma.paketAttempt.findMany({
+      where: whereClause,
+      include: {
+        subscriber: {
+          select: { id_subscriber: true, nama_subscriber: true, foto: true },
+        },
+        history: true,
+      },
+    });
+
+    // 3. AGREGASI DATA (Kelompokkan berdasarkan User)
+    // Karena satu user bisa mengerjakan 3 paket, kita harus menggabungkan nilainya.
+    const userStats = new Map();
+
+    attempts.forEach((attempt) => {
+      const userId = attempt.subscribers_id_subscriber;
+
+      if (!userStats.has(userId)) {
+        userStats.set(userId, {
+          id_subscriber: userId,
+          name: attempt.subscriber.nama_subscriber || "Peserta Event",
+          avatar: attempt.subscriber.foto || "/person.jpg",
+          benar: 0,
+          totalDurasi: 0,
+        });
+      }
+
+      const stats = userStats.get(userId);
+
+      // Hitung jawaban benar di attempt ini
+      const benar = attempt.history.filter(
+        (h) => (h.skor_point || 0) > 0,
+      ).length;
+      stats.benar += benar;
+
+      // Hitung durasi (Waktu Selesai - Waktu Mulai) dalam milidetik
+      const start = new Date(attempt.started_at).getTime();
+      const finish = new Date(attempt.finished_at).getTime();
+      stats.totalDurasi += finish - start;
+    });
+
+    // 4. Kalkulasi Skor Akhir & Format Data
+    const leaderboard = Array.from(userStats.values()).map((user) => {
+      // Skor = (Total Benar / Total Soal Target) * 100
+      const score =
+        totalSoalTarget > 0
+          ? Math.round((user.benar / totalSoalTarget) * 100)
+          : 0;
+
+      return {
+        id_subscriber: user.id_subscriber,
+        name: user.name,
+        avatar: user.avatar,
+        stats: `${user.benar}/${totalSoalTarget}`, // Tampilan "15/20"
+        score: score,
+        _durasiSistem: user.totalDurasi, // Tie-breaker rahasia
+      };
+    });
+
+    // 5. SORTING: Skor Tertinggi -> Durasi Tercepat
+    leaderboard.sort((a, b) => {
+      if (b.score !== a.score) {
+        return b.score - a.score; // Prioritas 1: Skor
+      }
+      return a._durasiSistem - b._durasiSistem; // Prioritas 2: Durasi tersingkat
+    });
+
+    // 6. Beri nomor ranking dan hapus durasi rahasia sebelum kirim ke FE
+    const finalLeaderboard = leaderboard.map((user, index) => {
+      const { _durasiSistem, ...cleanData } = user;
+      return {
+        no: index + 1,
+        ...cleanData,
+      };
+    });
+
+    res.status(200).json({
+      status: "success",
+      data: finalLeaderboard,
+    });
+  } catch (error) {
+    console.error("Get Event Leaderboard Error:", error);
     res.status(500).json({ status: "error", message: error.message });
   }
 };

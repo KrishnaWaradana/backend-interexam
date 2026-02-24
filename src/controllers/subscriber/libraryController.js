@@ -637,7 +637,10 @@ exports.getEventDetail = async (req, res) => {
               include: {
                 _count: { select: { soalPaket: true } },
                 paketAttempt: {
-                  where: { subscribers_id_subscriber: parseInt(id_subscriber) },
+                  where: {
+                    subscribers_id_subscriber: parseInt(id_subscriber),
+                    id_event: parseInt(id),
+                  },
                   orderBy: { started_at: "desc" },
                   take: 1,
                 },
