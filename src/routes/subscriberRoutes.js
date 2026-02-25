@@ -197,6 +197,13 @@ router.get(
   examController.getExamLeaderboard,
 );
 
+router.get(
+  "/attempt/:id_paket_soal/discussion",
+  authenticateToken,
+  isSubscriber,
+  examController.getDiscussion,
+);
+
 // Endpoint pengecekan status paket langganan pada subscriber
 router.get(
   "/check-status",
@@ -228,24 +235,28 @@ router.get(
 router.get(
   "/events/:id_event/pakets/:id_paket_soal",
   authenticateToken,
+  isSubscriber,
   examController.getEventPaketDetail,
 );
 
 router.get(
   "/events/:id_event/report",
   authenticateToken,
+  isSubscriber,
   examController.getEventUserReport,
 );
 
 router.get(
   "/events/:id_event/leaderboard",
   authenticateToken,
+  isSubscriber,
   examController.getEventLeaderboard,
 );
 
 router.get(
   "/profile_subscriber",
   authenticateToken,
+  isSubscriber,
   subscriberProfileController.getProfile,
 );
 

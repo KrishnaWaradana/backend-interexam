@@ -412,6 +412,130 @@ exports.getExamLeaderboard = async (req, res) => {
   }
 };
 
+exports.getDiscussion = async (req, res) => {
+  try {
+    const id_subscriber = req.user.id;
+    const { id_paket_soal } = req.params;
+    const { id_event } = req.query; // Opsional jika nanti mau dipakai untuk event
+
+    // 1. Cari riwayat pengerjaan TERAKHIR yang sudah selesai
+    const attempt = await prisma.paketAttempt.findFirst({
+      where: {
+        subscribers_id_subscriber: id_subscriber,
+        paket_soal_id_paket_soal: parseInt(id_paket_soal),
+        id_event: id_event ? parseInt(id_event) : null,
+        finished_at: { not: null }, // Pastikan sudah disubmit
+      },
+      orderBy: { finished_at: "desc" },
+      include: {
+        paketSoal: true,
+        history: true, // Ambil jawaban user
+      },
+    });
+
+    if (!attempt) {
+      return res.status(404).json({
+        status: "error",
+        message: "Hasil pengerjaan tidak ditemukan atau belum selesai.",
+      });
+    }
+
+    // 2. Ambil seluruh Master Soal dari Paket tersebut
+    const soalRelasi = await prisma.soalPaketSoal.findMany({
+      where: { id_paket_soal: parseInt(id_paket_soal) },
+      orderBy: { id_soal_paket_soal: "asc" },
+      include: {
+        soal: {
+          include: {
+            attachments: true,
+            jawaban: true, // Ambil semua opsi dan pembahasannya
+          },
+        },
+      },
+    });
+
+    // 3. Gabungkan Data Master Soal dengan Jawaban User
+    const pembahasanData = soalRelasi.map((item, index) => {
+      // Cari apakah user menjawab soal ini di history
+      const historyItem = attempt.history.find(
+        (h) => h.id_soal_paket_soal === item.id_soal_paket_soal,
+      );
+
+      // Cari kunci jawaban yang benar dari sistem
+      const correctAnswer = item.soal.jawaban.find((j) => j.status === true);
+
+      // Cari jawaban yang dipilih user
+      const userPickedAnswer = historyItem
+        ? item.soal.jawaban.find((j) => j.id_jawaban === historyItem.id_jawaban)
+        : null;
+
+      // Tentukan status
+      const isSkipped = !historyItem;
+      const isCorrect = userPickedAnswer
+        ? userPickedAnswer.status === true
+        : false;
+
+      let statusJawaban = "dilewati";
+      if (!isSkipped) {
+        statusJawaban = isCorrect ? "benar" : "salah";
+      }
+
+      return {
+        no_soal: index + 1,
+        id_soal: item.soal.id_soal,
+        text_soal: item.soal.text_soal,
+        jenis_soal: item.soal.jenis_soal,
+        attachments: item.soal.attachments,
+        status_jawaban: statusJawaban,
+
+        // Kirim semua opsi jawaban (untuk UI pilihan ganda)
+        opsi_jawaban: item.soal.jawaban.map((j) => ({
+          id_jawaban: j.id_jawaban,
+          teks: j.opsi_jawaban_text,
+          is_correct: j.status === true,
+        })),
+
+        // Detail Jawaban User
+        jawaban_user: userPickedAnswer
+          ? {
+              id_jawaban: userPickedAnswer.id_jawaban,
+              teks: userPickedAnswer.opsi_jawaban_text,
+              short_answer: historyItem.short_answer,
+            }
+          : null,
+
+        // Kunci Jawaban & Pembahasan
+        kunci_jawaban: correctAnswer ? correctAnswer.opsi_jawaban_text : null,
+        pembahasan:
+          correctAnswer?.pembahasan || "Tidak ada pembahasan untuk soal ini.",
+      };
+    });
+
+    // 4. Hitung ringkasan statistik (Opsional untuk header di Frontend)
+    const summary = {
+      total_soal: soalRelasi.length,
+      benar: pembahasanData.filter((d) => d.status_jawaban === "benar").length,
+      salah: pembahasanData.filter((d) => d.status_jawaban === "salah").length,
+      dilewati: pembahasanData.filter((d) => d.status_jawaban === "dilewati")
+        .length,
+    };
+
+    res.status(200).json({
+      status: "success",
+      message: "Data pembahasan berhasil dimuat",
+      data: {
+        paket: attempt.paketSoal.nama_paket,
+        tanggal_pengerjaan: attempt.finished_at,
+        summary: summary,
+        pembahasan: pembahasanData,
+      },
+    });
+  } catch (error) {
+    console.error("Get Discussion Error:", error);
+    res.status(500).json({ status: "error", message: error.message });
+  }
+};
+
 exports.getEventPaketDetail = async (req, res) => {
   try {
     const id_subscriber = parseInt(req.user.id);
