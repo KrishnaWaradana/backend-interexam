@@ -441,14 +441,20 @@ exports.getRecentPakets = async (req, res) => {
     const recentPakets = await prisma.paketSoal.findMany({
       where: {
         paketAttempt: {
-          some: { subscribers_id_subscriber: id_subscriber },
+          some: {
+            subscribers_id_subscriber: id_subscriber,
+            id_event: null,
+          },
         },
       },
       include: {
         category: true,
         soalPaket: true,
         paketAttempt: {
-          where: { subscribers_id_subscriber: id_subscriber },
+          where: {
+            subscribers_id_subscriber: id_subscriber,
+            id_event: null,
+          },
           include: { history: true },
           orderBy: { started_at: "desc" },
           take: 1,
