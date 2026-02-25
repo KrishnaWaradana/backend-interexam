@@ -108,5 +108,16 @@ router.get('/admin/subscribers/:id', authenticateToken, adminSubscriberControlle
 router.put('/admin/transactions/:id/status', authenticateToken, adminSubscriberController.updateTransactionStatus);
 router.post('/admin/transactions/:id/resend-invoice', authenticateToken, adminSubscriberController.resendInvoice);
 
+// Subscription daftar transaksi
+router.get('/admin/subscribers', authenticateToken, adminSubscriberController.getAllTransactions);
+router.get('/admin/subscribers/:id', authenticateToken, adminSubscriberController.getTransactionDetail);
+router.put('/admin/transactions/:id/status', authenticateToken, adminSubscriberController.updateTransactionStatus);
+router.post('/admin/transactions/:id/resend-invoice', authenticateToken, adminSubscriberController.resendInvoice);
+
+// [TAMBAHKAN BARIS INI] Route khusus list gabungan di Dashboard
+router.get('/admin/all-subscribers', authenticateToken, adminSubscriberController.getAllSubscribersForAdmin);
+
+module.exports = router;
+
 
 module.exports = router;

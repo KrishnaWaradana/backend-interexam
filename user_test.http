@@ -684,3 +684,113 @@ Content-Type: application/json
   "gross_amount": "533333", 
   "fraud_status": "accept"
 }
+
+### Variabel Konfigurasi
+@baseUrl = http://localhost:5000/api
+
+### TEST DASHBOARD STATS (Tanpa Token - Menggunakan Bypass ID 13)
+GET {{baseUrl}}/dashboard/stats
+Content-Type: application/json
+
+### Penjelasan:
+# Karena di routes kita menggunakan bypassAuth, 
+# server akan otomatis menganggap request ini datang dari User ID 13.
+
+
+### Variabel Konfigurasi
+@baseUrl = http://localhost:5000/api/v1
+
+### 1. TEST REPORT - PERIODE MINGGU (Week)
+GET {{baseUrl}}/report/stats?period=week
+Content-Type: application/json
+
+### 2. TEST REPORT - PERIODE BULAN (Month)
+GET {{baseUrl}}/report/stats?period=month
+Content-Type: application/json
+
+### 3. TEST REPORT - PERIODE TAHUN (Year)
+GET {{baseUrl}}/report/stats?period=year
+Content-Type: application/json
+
+
+
+### Variabel Dasar
+@baseUrl = http://localhost:5000/api/v1
+@contentType = application/json
+
+### ---------------------------------------------------------
+### 1. TES SEBAGAI ADMIN (ID: 13)
+### Ekspektasi: Muncul SEMUA data dari semua user.
+### ---------------------------------------------------------
+GET {{baseUrl}}/report/stats?period=year
+Content-Type: {{contentType}}
+x-test-id: 13
+x-test-role: Admin
+
+###
+
+### ---------------------------------------------------------
+### 2. TES SEBAGAI CONTRIBUTOR (ID: 12)
+### Ekspektasi: Summary Paket & Bar Chart hanya milik ID 12.
+### ---------------------------------------------------------
+GET {{baseUrl}}/report/stats?period=month
+Content-Type: {{contentType}}
+x-test-id: 12
+x-test-role: Contributor
+
+###
+
+### ---------------------------------------------------------
+### 3. TES SEBAGAI VALIDATOR (ID: 14)
+### Ekspektasi: Statistik Soal hanya yang ditangani ID 14.
+### ---------------------------------------------------------
+GET {{baseUrl}}/report/stats?period=week
+Content-Type: {{contentType}}
+x-test-id: 14
+x-test-role: Validator
+
+
+
+@baseUrl = http://localhost:5000/api/v1
+@contentType = application/json
+
+### 1. Test Filter: Tahun Ini (Default)
+### Perhatikan penulisan /report/stats sesuai route express
+GET {{baseUrl}}/report/stats?period=year
+Content-Type: {{contentType}}
+
+### 2. Test Filter: Bulan Ini
+GET {{baseUrl}}/report/stats?period=month
+Content-Type: {{contentType}}
+
+### 3. Test Filter: Minggu Ini
+GET {{baseUrl}}/report/stats?period=week
+Content-Type: {{contentType}}
+
+
+@baseUrl = http://localhost:5000/api/v1
+@contentType = application/json
+
+### ---------------------------------------------------------
+### 1. CEK FILTER: TAHUNAN (Comparison: 2026 vs 2025)
+### Ekspektasi: labels berisi nama bulan (Jan, Feb, ...), 
+### 'current' adalah data 2026, 'last' adalah data 2025.
+### ---------------------------------------------------------
+GET {{baseUrl}}/report/stats?period=year
+Content-Type: {{contentType}}
+
+### ---------------------------------------------------------
+### 2. CEK FILTER: BULANAN (Comparison: Bulan Ini vs Bulan Lalu)
+### Ekspektasi: labels berisi tanggal (misal: 01 Feb, 02 Feb),
+### 'current' data bulan berjalan, 'last' data bulan sebelumnya.
+### ---------------------------------------------------------
+GET {{baseUrl}}/report/stats?period=month
+Content-Type: {{contentType}}
+
+### ---------------------------------------------------------
+### 3. CEK FILTER: MINGGUAN (Comparison: Minggu Ini vs Minggu Lalu)
+### Ekspektasi: labels berisi nama hari (Sen, Sel, ...),
+### 'current' 7 hari terakhir, 'last' 7 hari sebelum itu.
+### ---------------------------------------------------------
+GET {{baseUrl}}/report/stats?period=week
+Content-Type: {{contentType}}
