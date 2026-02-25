@@ -25,6 +25,7 @@ const landingRoutes = require("./routes/landingRoutes");
 const paymentRoutes = require("./routes/paymentRoutes");
 const workflowRoutes = require("./routes/workflowRoutes");
 const eventRoutes = require("./routes/eventRoutes");
+const publicRoutes = require("./routes/publicRoutes");
 const dashboardRoutes = require('./routes/dashboardRoutes');
 const reportRoutes = require('./routes/reportRoutes');
 
@@ -111,6 +112,9 @@ app.use("/api/v1/contributor", soalRoutes);
 
 // event
 app.use("/api/v1/event", eventRoutes);
+
+// public
+app.use("/api/v1/public", publicRoutes);
 
 // --- ROUTE PAYMENT (YANG TADI ERROR) ---
 // Jika di file paymentRoutes.js isinya: router.post('/payment/charge', ...)
