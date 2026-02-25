@@ -446,7 +446,7 @@ model PaketAttempt {
 
 model JawabanSoal {
   id_jawaban          Int                      @id @default(autoincrement())
-  opsi_jawaban_text   String?                  @db.VarChar(100)
+  opsi_jawaban_text   String?                  @db.Text
   path_gambar_jawaban String?                  @db.VarChar(255)
   status              Boolean?                 @default(false)
   short_answer        String?                  @db.VarChar(45)

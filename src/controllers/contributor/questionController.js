@@ -4,14 +4,30 @@ const fs = require('fs');
 const path = require('path');
 
 // =================================================================
+// HELPER BARU: PENYARING PATH & URL 
+// =================================================================
+const extractUploadPath = (urlOrPath) => {
+    if (!urlOrPath) return null;
+    let str = Array.isArray(urlOrPath) ? urlOrPath[0] : urlOrPath;
+    if (typeof str !== 'string' || str === 'null' || str === '') return null;
+    
+    const normalized = str.replace(/\\/g, '/');
+    const uploadIndex = normalized.indexOf('uploads/');
+    
+    if (uploadIndex !== -1) {
+        return normalized.substring(uploadIndex); 
+    }
+    return normalized;
+};
+
+// =================================================================
 // HELPER: HAPUS FILE
 // =================================================================
 const deleteFile = (filePath) => {
-    if (!filePath) return;
-    const pathString = Array.isArray(filePath) ? filePath[0] : filePath;
-    if (typeof pathString !== 'string') return;
+    const cleanPath = extractUploadPath(filePath);
+    if (!cleanPath) return;
 
-    const normalizedPath = pathString.replace(/\\/g, '/');
+    const normalizedPath = cleanPath.replace(/\\/g, '/');
     const absolutePath = path.isAbsolute(normalizedPath) 
         ? normalizedPath 
         : path.join(global.__basedir, '../', normalizedPath); 
@@ -27,38 +43,32 @@ const deleteFile = (filePath) => {
 };
 
 // =================================================================
-// HELPER BARU: DUPLIKAT FILE FISIK (PENTING!)
+// HELPER: DUPLIKAT FILE FISIK 
 // =================================================================
 const copyExistingFile = (oldRelativePath, targetFolder) => {
-    if (!oldRelativePath) return null;
-    const sourcePathString = Array.isArray(oldRelativePath) ? oldRelativePath[0] : oldRelativePath;
-    if (typeof sourcePathString !== 'string' || sourcePathString === 'null' || sourcePathString === '') return null;
-
+    const cleanPath = extractUploadPath(oldRelativePath);
+    if (!cleanPath) return null;
     
-    const normalizedSource = sourcePathString.replace(/\\/g, '/');
+    const normalizedSource = cleanPath.replace(/\\/g, '/');
     const absoluteSourcePath = path.isAbsolute(normalizedSource)
         ? normalizedSource
         : path.join(global.__basedir, '../', normalizedSource);
-
 
     if (fs.existsSync(absoluteSourcePath)) {
         try {
             const ext = path.extname(absoluteSourcePath);
             const newFileName = `copy_${Date.now()}_${Math.floor(Math.random() * 1000)}${ext}`;
             const uploadDir = path.join(global.__basedir, `../uploads/${targetFolder}`);
+            
             if (!fs.existsSync(uploadDir)) {
                 fs.mkdirSync(uploadDir, { recursive: true });
             }
 
             const absoluteDestPath = path.join(uploadDir, newFileName);
-
-
             fs.copyFileSync(absoluteSourcePath, absoluteDestPath);
-            
             console.log(`[FILE] Berhasil duplikat fisik: ${newFileName}`);
 
             return `uploads/${targetFolder}/${newFileName}`;
-
         } catch (err) {
             console.error(`[FILE] Gagal duplikat file: ${err.message}`);
             return null;
@@ -68,11 +78,10 @@ const copyExistingFile = (oldRelativePath, targetFolder) => {
 };
 
 // =================================================================
-// HELPER: NOTIFIKASI PENGAJUAN SOAL (BAGIAN YANG DITAMBAHKAN)
+// HELPER: NOTIFIKASI PENGAJUAN SOAL
 // =================================================================
 const triggerSubmitNotification = async (soalId, id_topik, senderId) => {
     try {
-        // 1. Cari nama subject (mata pelajaran) dari topik
         const topic = await prisma.topics.findUnique({
             where: { id_topics: parseInt(id_topik) },
             include: { subject: true }
@@ -82,23 +91,19 @@ const triggerSubmitNotification = async (soalId, id_topik, senderId) => {
         const subjectId = topic.id_subjects;
         const subjectName = topic.subject.nama_subject;
         
-        // 2. Ambil nama pengirim
         const senderData = await prisma.users.findUnique({ where: { id_user: parseInt(senderId) } });
         const senderName = senderData?.nama_user || "Contributor";
 
-        // 3. Cari Admin dan Validator yang sesuai kompetensi
         const admins = await prisma.users.findMany({ where: { role: 'Admin' } });
         const validators = await prisma.kompetensiUser.findMany({
             where: { id_subject: subjectId },
             include: { user: true }
         });
 
-        // 4. Kumpulkan ID mereka (pakai Set agar tidak double)
         const recipientIds = new Set();
         admins.forEach(a => recipientIds.add(a.id_user));
         validators.forEach(v => { if (v.user.role === 'Validator') recipientIds.add(v.user.id_user); });
 
-        // 5. Buat notifikasinya
         const notifData = Array.from(recipientIds).map(rId => ({
             id_recipient: rId,
             id_sender: parseInt(senderId),
@@ -123,106 +128,76 @@ const addQuestion = async (req, res) => {
     const answerFilesList = files['image_jawaban'] || [];
     const pembahasanFile = files['image_pembahasan'] ? files['image_pembahasan'][0] : null;
 
-    // Variabel untuk cleanup jika error
-    let generatedFiles = []; 
+    let generatedFiles = [];
+    let createdSoalId = null; 
 
-    try {
+    try { 
         const { 
             tipe_soal, text_soal, id_topik,id_subtopik, level_kesulitan, 
             pembahasan_umum, opsi_jawaban, action_type, 
             old_image_soal, old_image_pembahasan 
         } = req.body;
         
-        if (text_soal) {
-            const soalWordCount = text_soal.trim().split(/\s+/).filter(word => word.length > 0).length;
-            if (soalWordCount > 200) {
-                throw new Error(`Soal terlalu panjang (${soalWordCount} kata). Maksimal 200 kata!`);
-            }
-        }
-        
-        // 2. Validasi Pembahasan (Max 1000 Kata)
-        if (pembahasan_umum) {
-            const pembWordCount = pembahasan_umum.trim().split(/\s+/).filter(word => word.length > 0).length;
-            if (pembWordCount > 1000) {
-                throw new Error(`Pembahasan terlalu panjang (${pembWordCount} kata). Maksimal 1000 kata!`);
-            }
-        }
-
         if (!id_topik || id_topik === "undefined") throw new Error("Topik wajib dipilih!");
         
         const contributorId = req.user.id;
         const statusSoal = action_type === 'Ajukan' ? StatusSoal.need_verification : StatusSoal.draft;
-        
         let jenis = tipe_soal === 'pilihan_ganda' ? 'multiple_choice' : 'multiple_answer';
 
-        // 1. Create Soal
         const newSoal = await prisma.soal.create({
             data: {
                 tanggal_pembuatan: new Date().toISOString(),
                 text_soal, jenis_soal: jenis, level_kesulitan, status: statusSoal,
                 contributor: { connect: { id_user: contributorId } },
                 topic: { connect: { id_topics: parseInt(id_topik) } }, 
-            //     subTopic: id_subtopik && id_subtopik !== "null" 
-            // ? { connect: { id_subtopics: parseInt(id_subtopik) } } 
-            // : undefined
-    
             }
         });
+
+        createdSoalId = newSoal.id_soal; 
         
+        // 2. KUNCI PERBAIKAN: Proses Gambar Soal (SESUAIKAN DENGAN MULTER YAITU FOLDER 'paket')
         let finalSoalPath = null;
         if (soalFile) {
-            finalSoalPath = `uploads/questions/${soalFile.filename}`;
+            finalSoalPath = `uploads/paket/${soalFile.filename}`; 
             generatedFiles.push(finalSoalPath);
-        } 
-        else if (old_image_soal) {
-            finalSoalPath = copyExistingFile(old_image_soal, 'questions');
+        } else if (old_image_soal) {
+            finalSoalPath = copyExistingFile(old_image_soal, 'paket');
             if(finalSoalPath) generatedFiles.push(finalSoalPath);
         }
 
         if (finalSoalPath) {
              await prisma.attachmentsSoal.create({ 
-                 data: { 
-                     path_attachment: finalSoalPath, 
-                     keterangan: 'Gambar Soal', 
-                     id_soal: newSoal.id_soal 
-                 } 
+                 data: { path_attachment: finalSoalPath, keterangan: 'Gambar Soal', id_soal: createdSoalId } 
              });
         }
 
+        // 3. Proses Gambar Pembahasan
         let finalPembahasanPath = null;
         if (pembahasanFile) {
             finalPembahasanPath = `uploads/photos/${pembahasanFile.filename}`;
             generatedFiles.push(finalPembahasanPath);
-        } 
-        else if (old_image_pembahasan) {
+        } else if (old_image_pembahasan) {
             finalPembahasanPath = copyExistingFile(old_image_pembahasan, 'photos');
             if(finalPembahasanPath) generatedFiles.push(finalPembahasanPath);
         }
 
         if (finalPembahasanPath) {
              await prisma.attachmentsSoal.create({ 
-                data: { 
-                    path_attachment: finalPembahasanPath, 
-                    keterangan: 'Gambar Pembahasan', 
-                    id_soal: newSoal.id_soal 
-                } 
+                data: { path_attachment: finalPembahasanPath, keterangan: 'Gambar Pembahasan', id_soal: createdSoalId } 
             });
         }
 
+        // 4. Proses Opsi Jawaban
         let parsedOpsi = JSON.parse(opsi_jawaban);
         let answerFileIndex = 0;
         
         const jawabanData = parsedOpsi.map((opsi) => {
             let imgPath = null;
-            
-            // Ada file baru upload
             if (opsi.has_image === true && answerFilesList[answerFileIndex]) {
                 imgPath = `uploads/photos/${answerFilesList[answerFileIndex].filename}`; 
                 generatedFiles.push(imgPath);
                 answerFileIndex++;
-            } 
-            // Duplikat -> COPY FILE FISIK
-            else if (opsi.old_path) {
+            } else if (opsi.old_path) {
                 imgPath = copyExistingFile(opsi.old_path, 'photos');
                 if(imgPath) generatedFiles.push(imgPath);
             }
@@ -231,7 +206,7 @@ const addQuestion = async (req, res) => {
                 opsi_jawaban_text: opsi.text || "", 
                 status: opsi.is_correct, 
                 pembahasan: pembahasan_umum,
-                soal_id_soal: newSoal.id_soal,
+                soal_id_soal: createdSoalId,
                 path_gambar_jawaban: imgPath 
             };
         });
@@ -241,23 +216,30 @@ const addQuestion = async (req, res) => {
         }
 
         if (statusSoal === StatusSoal.need_verification) {
-            triggerSubmitNotification(newSoal.id_soal, id_topik, contributorId).catch(console.error);
+            triggerSubmitNotification(createdSoalId, id_topik, contributorId).catch(console.error);
         }
 
-        res.status(201).json({ message: 'Soal berhasil disimpan.', data: { soalId: newSoal.id_soal } });
+        res.status(201).json({ message: 'Soal berhasil disimpan.', data: { soalId: createdSoalId } });
 
     } catch (error) {
         console.error(">>> ERROR ADD QUESTION:", error);
         
-        // 1. Hapus file uploadan baru
+        // ROLLBACK JIKA GAGAL
+        if (createdSoalId) {
+            try {
+                await prisma.jawabanSoal.deleteMany({ where: { soal_id_soal: createdSoalId } });
+                await prisma.attachmentsSoal.deleteMany({ where: { id_soal: createdSoalId } });
+                await prisma.soal.delete({ where: { id_soal: createdSoalId } });
+                console.log(`[ROLLBACK] Soal ID ${createdSoalId} dihapus dari DB karena proses gagal.`);
+            } catch (cleanupErr) {
+                console.error("[ROLLBACK ERROR]:", cleanupErr);
+            }
+        }
+
         if (soalFile) deleteFile(soalFile.path);
         if (pembahasanFile) deleteFile(pembahasanFile.path);
         if (answerFilesList.length > 0) answerFilesList.forEach(f => deleteFile(f.path));
-        
-        // 2. Hapus file hasil copy-an (Generated)
-        if (generatedFiles.length > 0) {
-            generatedFiles.forEach(f => deleteFile(f));
-        }
+        if (generatedFiles.length > 0) generatedFiles.forEach(f => deleteFile(f));
 
         res.status(500).json({ message: error.message });
     }
@@ -270,7 +252,6 @@ const getQuestionsByContributor = async (req, res) => {
     try {
         const contributorId = req.user.id;
         
-        // --- 1. Hitung Statistik (Tetap Sama) ---
         const [totalSoal, totalVerified, totalDraft, totalRejected, totalNeed] = await Promise.all([
             prisma.soal.count({ where: { id_contributor: contributorId } }),
             prisma.soal.count({ where: { id_contributor: contributorId, status: StatusSoal.disetujui } }),
@@ -280,32 +261,20 @@ const getQuestionsByContributor = async (req, res) => {
         ]);
 
         const statistics = { 
-            total_dibuat: totalSoal, 
-            total_tervalidasi: totalVerified, 
-            total_draft: totalDraft, 
-            total_ditolak: totalRejected, 
-            total_need_verification: totalNeed 
+            total_dibuat: totalSoal, total_tervalidasi: totalVerified, total_draft: totalDraft, 
+            total_ditolak: totalRejected, total_need_verification: totalNeed 
         };
 
-        // --- 2. Ambil Data Soal (QUERY DIPERBAIKI) ---
         const questions = await prisma.soal.findMany({
             where: { id_contributor: contributorId },
             include: { 
-                // PERUBAHAN DISINI: Ambil Subject dan Jenjang dari Topic
-                topic: { 
-                    include: {
-                        subject: true, // Ambil info Mapel
-                        jenjang: true  // Ambil info Jenjang
-                    }
-                }, 
-                // subTopic: true,
+                topic: { include: { subject: true, jenjang: true } }, 
                 attachments: true, 
                 jawaban: true 
             },
             orderBy: { tanggal_pembuatan: 'desc' }
         });
 
-        // --- 3. Format Data (MAPPING DIPERBAIKI) ---
         const formattedQuestions = questions.map(q => {
             const imgSoal = q.attachments.find(a => a.keterangan === 'Gambar Soal');
             const imgPembahasan = q.attachments.find(a => a.keterangan === 'Gambar Pembahasan');
@@ -313,14 +282,9 @@ const getQuestionsByContributor = async (req, res) => {
             return {
                 id: q.id_soal,
                 nomor: q.id_soal, 
-                
-                // PERBAIKAN: Ambil nama dari relasi yang benar
                 mata_pelajaran: q.topic?.subject?.nama_subject || 'N/A', 
-                jenjang: q.topic?.jenjang?.nama_jenjang || '-', // <--- Field Baru untuk Frontend
+                jenjang: q.topic?.jenjang?.nama_jenjang || '-', 
                 topik: q.topic?.nama_topics || '-',
-                // sub_topik: q.subTopic?.nama_subtopics || '-',
-                // id_subtopik: q.id_subtopics,
-
                 text_soal: q.text_soal,
                 tipe_soal: q.jenis_soal,
                 level_kesulitan: q.level_kesulitan,
@@ -328,7 +292,8 @@ const getQuestionsByContributor = async (req, res) => {
                 id_topik: q.id_topics,
                 pembahasan_umum: q.jawaban.length > 0 ? q.jawaban[0].pembahasan : "",
                 catatan_revisi: null, 
-                gambar: imgSoal ? imgSoal.path_attachment : null,
+                gambar: imgSoal ? imgSoal.path_attachment : null, // Murni path asli untuk Frontend
+                gambar_soal: imgSoal ? imgSoal.path_attachment : null, // Support kedua key agar aman
                 gambar_pembahasan: imgPembahasan ? imgPembahasan.path_attachment : null,
                 list_jawaban: q.jawaban 
             };
@@ -361,11 +326,10 @@ const editQuestion = async (req, res) => {
             return res.status(403).json({ message: "Anda tidak memiliki akses ke soal ini." });
         }
         if (!existingSoal) throw new Error('Soal tidak ditemukan.');
-        
 
-        // A. UPDATE GAMBAR SOAL
+        // A. KUNCI PERBAIKAN: UPDATE GAMBAR SOAL SESUAI FOLDER 'paket'
         if (newSoalFile) {
-            const finalSoalPath = `uploads/questions/${newSoalFile.filename}`;
+            const finalSoalPath = `uploads/paket/${newSoalFile.filename}`;
             const oldSoalImg = existingSoal.attachments.find(a => a.keterangan === 'Gambar Soal');
             
             if (oldSoalImg) {
@@ -400,30 +364,9 @@ const editQuestion = async (req, res) => {
              jenis = (tipe_soal === 'pilihan_ganda' || tipe_soal === 'multiple_choice') ? 'multiple_choice' : 'multiple_answer';
         }
 
-        // 1. Validasi Soal (Maks 200 Kata)
-        if (text_soal) {
-            const soalWords = text_soal.trim().split(/\s+/).filter(w => w.length > 0).length;
-            if (soalWords > 200) {
-                // Gunakan return agar berhenti di sini
-                return res.status(400).json({ message: `Update Gagal: Soal terlalu panjang (${soalWords} kata). Maksimal 200 kata!` });
-            }
-        }
-
-        // 2. Validasi Pembahasan (Maks 1000 Kata)
-        if (pembahasan_umum) {
-            const pembWords = pembahasan_umum.trim().split(/\s+/).filter(w => w.length > 0).length;
-            if (pembWords > 1000) {
-                return res.status(400).json({ message: `Update Gagal: Pembahasan terlalu panjang (${pembWords} kata). Maksimal 1000 kata!` });
-            }
-        }
-
         await prisma.soal.update({
             where: { id_soal: questionId },
-            data: { 
-                text_soal, level_kesulitan, status: statusSoal, jenis_soal: jenis, 
-                id_topics: parseInt(id_topik),
-                // id_subtopics: id_subtopik && id_subtopik !== "null" ? parseInt(id_subtopik) : null
-            }
+            data: { text_soal, level_kesulitan, status: statusSoal, jenis_soal: jenis, id_topics: parseInt(id_topik) }
         });
 
         // D. UPDATE JAWABAN
@@ -434,14 +377,12 @@ const editQuestion = async (req, res) => {
 
         const jawabanDataBaru = parsedOpsi.map((opsi) => {
             let finalPath = null;
-            // 1. Upload Baru 
             if (opsi.has_image === true && newAnswerFilesList[answerFileIndex]) {
                  finalPath = `uploads/photos/${newAnswerFilesList[answerFileIndex].filename}`; 
                  answerFileIndex++;
             } 
-            // 2. Pakai Gambar Lama
             else if (opsi.old_path && opsi.old_path !== "null" && opsi.old_path !== "") {
-                 finalPath = Array.isArray(opsi.old_path) ? opsi.old_path[0] : opsi.old_path;
+                 finalPath = extractUploadPath(opsi.old_path); // Filter URL ke format lokal DB
             }
 
             return {
@@ -515,14 +456,9 @@ const getQuestionDetail = async (req, res) => {
             include: {
                 attachments: true,
                 jawaban: { orderBy: { id_jawaban: 'asc' } },
-                topic: {
-                    include: { subject: true, jenjang: true }
-                },
-                // subTopic: true
+                topic: { include: { subject: true, jenjang: true } }
             }
-            
         });
-        
 
         if (!soal) return res.status(404).json({ message: 'Soal tidak ditemukan.' });
 
@@ -537,20 +473,18 @@ const getQuestionDetail = async (req, res) => {
             pembahasan_umum: soal.jawaban.length > 0 ? soal.jawaban[0].pembahasan : "",
             catatan_revisi: soal.catatan_revisi || null,
             status: soal.status,
-            gambar_soal: imgSoal ? imgSoal.path_attachment : null,
+            gambar: imgSoal ? imgSoal.path_attachment : null, // Murni path asli
+            gambar_soal: imgSoal ? imgSoal.path_attachment : null, 
             gambar_pembahasan: imgPembahasan ? imgPembahasan.path_attachment : null,
             id_topik: soal.id_topics,
             id_subject: soal.topic ? soal.topic.id_subjects : null,
             nama_subject: soal.topic?.subject?.nama_subject, 
-            // id_subtopik: soal.id_subtopics,
-            // nama_subtopik: soal.subTopic?.nama_subtopics || null,
             list_jawaban: soal.jawaban.map(j => ({
                 id: j.id_jawaban,
                 opsi_jawaban_text: j.opsi_jawaban_text,
                 status: j.status,
                 path_gambar_jawaban: j.path_gambar_jawaban
             }))
-            
         };
 
         res.status(200).json({ message: 'Berhasil', data: formattedData });
