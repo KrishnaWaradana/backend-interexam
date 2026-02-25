@@ -3,7 +3,7 @@ const prisma = new PrismaClient();
 const { 
     startOfMonth, endOfMonth, startOfYear, endOfYear, 
     format, eachDayOfInterval, eachMonthOfInterval, 
-    subDays, subMonths, subYears, startOfWeek, endOfWeek, parseISO 
+    subDays, subMonths, subYears, startOfWeek, endOfWeek 
 } = require('date-fns');
 
 const getReportData = async (req, res) => {
@@ -12,7 +12,7 @@ const getReportData = async (req, res) => {
         const now = new Date();
         let currentRange, lastRange, formatKey, intervals;
 
-        // 1. SET RANGE WAKTU
+        // 1. SET RANGE WAKTU (Untuk Pendapatan, Summary, dan Bar Chart)
         if (period === 'week') {
             currentRange = { start: startOfWeek(now), end: endOfWeek(now) };
             lastRange = { start: startOfWeek(subDays(now, 7)), end: endOfWeek(subDays(now, 7)) };
@@ -33,11 +33,11 @@ const getReportData = async (req, res) => {
         // 2. QUERY DATABASE
         const [
             incomeCurrent, incomeLast,
-            allSubscribers, // Ambil semua karena tidak ada created_at di model Subscribers
+            allSubscribers, 
             subjects,
             totalEventCount,
             totalPaketCount,
-            allSoal // Ambil soal untuk difilter manual karena field-nya String
+            allSoal 
         ] = await Promise.all([
             prisma.transaksi.findMany({ 
                 where: { status: 'success', created_at: { gte: currentRange.start, lte: currentRange.end } }
@@ -52,26 +52,30 @@ const getReportData = async (req, res) => {
                 include: { topics: { include: { soal: true } } }
             }),
             prisma.event.count({ where: { created_at: { gte: currentRange.start, lte: currentRange.end } } }),
-            prisma.paketSoal.count(), // PaketSoal di schema Anda tidak punya default now, jadi ambil total
-            prisma.soal.findMany() // Ambil semua soal karena tanggal_pembuatan adalah String
+            prisma.paketSoal.count(), 
+            prisma.soal.findMany() 
         ]);
 
-        // 3. FILTERING MANUAL (Karena tipe data String/Missing di Prisma)
-        
-        // Filter Soal berdasarkan String tanggal_pembuatan
-        const filteredSoal = allSoal.filter(s => {
+        // 3. FILTERING KHUSUS SOAL (Berdasarkan Waktu) untuk Summary & Bar Chart
+        const filteredSoalByDate = allSoal.filter(s => {
             if (!s.tanggal_pembuatan) return false;
             const d = new Date(s.tanggal_pembuatan);
             return d >= currentRange.start && d <= currentRange.end;
         });
 
-        const approvedSoal = filteredSoal.filter(s => s.status === 'disetujui').length;
-        const rejectedSoal = filteredSoal.filter(s => s.status === 'ditolak').length;
+        // 4. LOGIKA STATUS SOAL (DARI SELURUH DATA - TIDAK TERFILTER WAKTU)
+        const approvedSoalTotal = allSoal.filter(s => s.status === 'disetujui').length;
+        const rejectedSoalTotal = allSoal.filter(s => s.status === 'ditolak').length;
 
-        // 4. MAPPING REVENUE
+        // 5. MAPPING REVENUE (PERBANDINGAN CURRENT vs LAST)
         const currentMap = {};
         const lastMap = {};
-        intervals.forEach(date => { currentMap[format(date, formatKey)] = 0; });
+
+        intervals.forEach(date => { 
+            const label = format(date, formatKey);
+            currentMap[label] = 0; 
+            lastMap[label] = 0; 
+        });
 
         incomeCurrent.forEach(t => {
             const label = format(t.created_at, formatKey);
@@ -79,15 +83,22 @@ const getReportData = async (req, res) => {
         });
 
         incomeLast.forEach(t => {
-            const label = format(t.created_at, formatKey);
-            lastMap[label] = (lastMap[label] || 0) + (Number(t.amount) || 0);
+            let labelCompare;
+            if (period === 'year') labelCompare = format(t.created_at, 'MMM');
+            else if (period === 'week') labelCompare = format(t.created_at, 'EEE');
+            else labelCompare = format(t.created_at, 'dd MMM');
+
+            if (lastMap.hasOwnProperty(labelCompare)) {
+                lastMap[labelCompare] += Number(t.amount) || 0;
+            }
         });
 
-        // 5. MAPPING BAR DATA (Berdasarkan filteredSoal)
+        // 6. MAPPING BAR DATA (IKUT FILTER WAKTU)
         const barData = subjects.map(s => {
             let count = 0;
             s.topics.forEach(t => {
                 const soalInTopic = t.soal.filter(so => {
+                    if (!so.tanggal_pembuatan) return false;
                     const d = new Date(so.tanggal_pembuatan);
                     return d >= currentRange.start && d <= currentRange.end;
                 });
@@ -96,28 +107,29 @@ const getReportData = async (req, res) => {
             return { label: s.nama_subject, value: count };
         }).filter(b => b.value > 0);
 
-        // 6. RESPONSE
+        // 7. RESPONSE
         return res.status(200).json({
             success: true,
             summary: {
-                totalSub: allSubscribers.length, // Karena tidak ada filter date di schema
+                totalSub: allSubscribers.length,
                 totalPaket: totalPaketCount,
                 totalIncome: incomeCurrent.reduce((acc, curr) => acc + curr.amount, 0),
-                totalSoal: filteredSoal.length,
+                totalSoal: filteredSoalByDate.length,
                 totalEvent: totalEventCount
             },
             filteredData: {
                 lineData: {
                     labels: Object.keys(currentMap),
-                    current: Object.values(currentMap),
-                    last: Object.keys(currentMap).map(k => lastMap[k] || 0)
+                    current: Object.values(currentMap), 
+                    last: Object.values(lastMap)      
                 },
                 pieData: [
                     { label: "Aktif", value: allSubscribers.filter(s => s.subscribePaket.some(p => p.status === 'active')).length, color: "#60a5fa" },
                     { label: "Non-Aktif", value: allSubscribers.filter(s => !s.subscribePaket.some(p => p.status === 'active')).length, color: "#9ca3af" }
                 ],
                 barData: barData,
-                donutPercent: (approvedSoal + rejectedSoal) > 0 ? Math.round((approvedSoal / (approvedSoal + rejectedSoal)) * 100) : 0
+                // DonutPercent sekarang menggunakan total keseluruhan
+                donutPercent: (approvedSoalTotal + rejectedSoalTotal) > 0 ? Math.round((approvedSoalTotal / (approvedSoalTotal + rejectedSoalTotal)) * 100) : 0
             }
         });
 
