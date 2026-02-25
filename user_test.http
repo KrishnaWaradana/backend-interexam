@@ -771,26 +771,27 @@ Content-Type: {{contentType}}
 @baseUrl = http://localhost:5000/api/v1
 @contentType = application/json
 
+@baseUrl = http://localhost:5000/api/v1
+@contentType = application/json
+
 ### ---------------------------------------------------------
-### 1. CEK FILTER: TAHUNAN (Comparison: 2026 vs 2025)
-### Ekspektasi: labels berisi nama bulan (Jan, Feb, ...), 
-### 'current' adalah data 2026, 'last' adalah data 2025.
+### 1. TEST FILTER TAHUNAN (Admin ID: 13)
+### Membandingkan pendapatan 2026 vs 2025
+### Status Soal (Donut) menampilkan total SELURUH data
 ### ---------------------------------------------------------
 GET {{baseUrl}}/report/stats?period=year
 Content-Type: {{contentType}}
 
 ### ---------------------------------------------------------
-### 2. CEK FILTER: BULANAN (Comparison: Bulan Ini vs Bulan Lalu)
-### Ekspektasi: labels berisi tanggal (misal: 01 Feb, 02 Feb),
-### 'current' data bulan berjalan, 'last' data bulan sebelumnya.
+### 2. TEST FILTER BULANAN (Admin ID: 13)
+### Membandingkan bulan ini vs bulan lalu
 ### ---------------------------------------------------------
 GET {{baseUrl}}/report/stats?period=month
 Content-Type: {{contentType}}
 
 ### ---------------------------------------------------------
-### 3. CEK FILTER: MINGGUAN (Comparison: Minggu Ini vs Minggu Lalu)
-### Ekspektasi: labels berisi nama hari (Sen, Sel, ...),
-### 'current' 7 hari terakhir, 'last' 7 hari sebelum itu.
+### 3. TEST FILTER MINGGUAN (Admin ID: 13)
+### Membandingkan minggu ini vs minggu lalu
 ### ---------------------------------------------------------
 GET {{baseUrl}}/report/stats?period=week
 Content-Type: {{contentType}}
