@@ -5,6 +5,7 @@ const router = express.Router();
 const dashboardController = require("../controllers/subscriber/dashboardController");
 const examController = require("../controllers/subscriber/examController");
 const libraryController = require("../controllers/subscriber/libraryController");
+const subscriberProfileController = require("../controllers/subscriber/subscriberProfileController");
 
 // Middleware
 const {
@@ -14,6 +15,7 @@ const {
 const {
   requireActiveSubscription,
 } = require("../middleware/subscriptionMiddleware");
+const upload = require("../middleware/upload");
 
 // check role dari token
 const isSubscriber = requireRole(["subscriber"]);
@@ -116,6 +118,12 @@ router.get(
   libraryController.getAllPaketsWithProgress,
 );
 
+router.get("/events", authenticateToken, libraryController.getAllEvents);
+
+router.get("/events/:id", authenticateToken, libraryController.getEventDetail);
+
+router.post("/events/join", authenticateToken, libraryController.joinEvent);
+
 // ==========================================
 // GROUP 2: DASHBOARD & STATS (dashboardController)
 // ==========================================
@@ -189,6 +197,13 @@ router.get(
   examController.getExamLeaderboard,
 );
 
+router.get(
+  "/attempt/:id_paket_soal/discussion",
+  authenticateToken,
+  isSubscriber,
+  examController.getDiscussion,
+);
+
 // Endpoint pengecekan status paket langganan pada subscriber
 router.get(
   "/check-status",
@@ -215,6 +230,63 @@ router.get(
       res.status(500).json({ is_premium: false });
     }
   },
+);
+
+router.get(
+  "/events/:id_event/pakets/:id_paket_soal",
+  authenticateToken,
+  isSubscriber,
+  examController.getEventPaketDetail,
+);
+
+router.get(
+  "/events/:id_event/report",
+  authenticateToken,
+  isSubscriber,
+  examController.getEventUserReport,
+);
+
+router.get(
+  "/events/:id_event/leaderboard",
+  authenticateToken,
+  isSubscriber,
+  examController.getEventLeaderboard,
+);
+
+router.get(
+  "/profile_subscriber",
+  authenticateToken,
+  isSubscriber,
+  subscriberProfileController.getProfile,
+);
+
+// Endpoint untuk Update Profil
+router.put(
+  "/profile_subscriber",
+  authenticateToken,
+  upload.single("foto"),
+  subscriberProfileController.updateProfile,
+);
+
+// Endpoint untuk Update Email
+router.put(
+  "/update-email",
+  authenticateToken,
+  subscriberProfileController.updateEmail,
+);
+
+// Endpoint untuk Update Phone
+router.put(
+  "/update-phone",
+  authenticateToken,
+  subscriberProfileController.updatePhone,
+);
+
+// Endpoint untuk Change Password
+router.put(
+  "/change-password",
+  authenticateToken,
+  subscriberProfileController.changePassword,
 );
 
 module.exports = router;

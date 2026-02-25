@@ -362,7 +362,10 @@ exports.getAllPaketsWithProgress = async (req, res) => {
           soalPaket: true,
           _count: { select: { paketAttempt: true } },
           paketAttempt: {
-            where: { subscribers_id_subscriber: id_subscriber },
+            where: {
+              subscribers_id_subscriber: id_subscriber,
+              id_event: null,
+            },
             include: { history: { select: { id_jawaban: true } } },
             orderBy: { started_at: "desc" },
             take: 1,
@@ -536,7 +539,7 @@ exports.addToFolder = async (req, res) => {
     // Update Favorit
     await prisma.favorites.update({
       where: { id_favorite: parseInt(id_favorite) },
-      data: { id_folder: id_folder ? parseInt(id_folder) : null }, // null = keluarkan dari folder
+      data: { id_folder: id_folder ? parseInt(id_folder) : null },
     });
 
     res.status(200).json({
@@ -547,6 +550,240 @@ exports.addToFolder = async (req, res) => {
     });
   } catch (error) {
     console.error("Add to Folder Error:", error);
+    res.status(500).json({ status: "error", message: error.message });
+  }
+};
+
+exports.getAllEvents = async (req, res) => {
+  try {
+    const { search, category, page = 1, limit = 10 } = req.query;
+
+    const whereClause = {
+      status: "active",
+    };
+
+    // Filter Search
+    if (search) {
+      whereClause.nama_event = { contains: search, mode: "insensitive" };
+    }
+
+    // Filter Category
+    if (category && category !== "all") {
+      whereClause.category = { nama_category: category };
+    }
+
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+
+    // Fetch Data
+    const [events, total] = await prisma.$transaction([
+      prisma.event.findMany({
+        where: whereClause,
+        include: {
+          category: true,
+          _count: {
+            select: { eventPaket: true },
+          },
+        },
+        orderBy: { tanggal_mulai: "asc" }, // Urutkan dari yang terdekat
+        skip,
+        take: parseInt(limit),
+      }),
+      prisma.event.count({ where: whereClause }),
+    ]);
+
+    // Formatting Data
+    const formattedData = events.map((evt) => ({
+      id: evt.id_event,
+      title: evt.nama_event,
+      image: evt.banner || "/default-event.jpg",
+      date_start: evt.tanggal_mulai,
+      date_end: evt.tanggal_selesai,
+      category: evt.category?.nama_category || "Umum",
+      jenis: evt.jenis, // Gratis / Berbayar
+      total_paket: evt._count.eventPaket,
+
+      is_active:
+        new Date() >= new Date(evt.tanggal_mulai) &&
+        new Date() <= new Date(evt.tanggal_selesai),
+    }));
+
+    res.status(200).json({
+      status: "success",
+      data: formattedData,
+      meta: { total, page: parseInt(page), limit: parseInt(limit) },
+    });
+  } catch (error) {
+    console.error("Error Get All Events:", error);
+    res.status(500).json({ status: "error", message: error.message });
+  }
+};
+
+// 2. GET EVENT DETAIL
+exports.getEventDetail = async (req, res) => {
+  try {
+    const id_subscriber = req.user.id;
+    const { id } = req.params; // ID Event
+
+    const event = await prisma.event.findUnique({
+      where: { id_event: parseInt(id) },
+      include: {
+        category: true,
+        pendaftar: {
+          where: { id_subscriber: parseInt(id_subscriber) },
+        },
+        eventPaket: {
+          include: {
+            paketSoal: {
+              include: {
+                _count: { select: { soalPaket: true } },
+                paketAttempt: {
+                  where: {
+                    subscribers_id_subscriber: parseInt(id_subscriber),
+                    id_event: parseInt(id),
+                  },
+                  orderBy: { started_at: "desc" },
+                  take: 1,
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (!event) {
+      return res
+        .status(404)
+        .json({ status: "error", message: "Event tidak ditemukan" });
+    }
+
+    const isRegistered = event.pendaftar.length > 0;
+    const now = new Date();
+    const isOngoing =
+      now >= new Date(event.tanggal_mulai) &&
+      now <= new Date(event.tanggal_selesai);
+
+    const sortedEventPakets = event.eventPaket.sort(
+      (a, b) => a.id_event_paket - b.id_event_paket,
+    );
+
+    let isPreviousDone = true; // Paket pertama (index 0) selalu dianggap "paket sebelumnya sudah selesai"
+
+    const formattedCourses = sortedEventPakets.map((ep, index) => {
+      const p = ep.paketSoal;
+      const attempt = p.paketAttempt[0];
+      const isDone = attempt?.finished_at != null;
+
+      const isLockedBySequence = isRegistered && !isPreviousDone;
+      const finalIsLocked = !isRegistered || isLockedBySequence;
+
+      // Pesan gembok
+      let lockedReason = null;
+      if (isLockedBySequence) {
+        // Jika kita mau sebut nama paket sebelumnya, ambil dari sorted array
+        const prevPaketName = sortedEventPakets[index - 1].paketSoal.nama_paket;
+        lockedReason = `Selesaikan paket '${prevPaketName}' terlebih dahulu`;
+      }
+
+      // Update isPreviousDone untuk iterasi (paket) selanjutnya
+      isPreviousDone = isDone;
+
+      return {
+        id: p.id_paket_soal,
+        title: p.nama_paket,
+        image: p.image,
+        total_soal: p._count.soalPaket,
+        is_locked: finalIsLocked,
+        locked_reason: lockedReason,
+        status_pengerjaan: isDone
+          ? "selesai"
+          : attempt
+            ? "sedang_mengerjakan"
+            : "belum_mulai",
+      };
+    });
+
+    // Format Data Final
+    const data = {
+      id: event.id_event,
+      title: event.nama_event,
+      description: event.deskripsi,
+      banner: event.banner,
+      date_start: event.tanggal_mulai,
+      date_end: event.tanggal_selesai,
+      jenis: event.jenis,
+      category: event.category?.nama_category,
+
+      user_status: {
+        is_registered: isRegistered,
+        can_join: !isRegistered && event.status === "active",
+        is_ongoing: isOngoing,
+      },
+
+      courses: formattedCourses, // Masukkan array yang sudah ada logika berantainya
+    };
+
+    res.status(200).json({ status: "success", data });
+  } catch (error) {
+    console.error("Error Detail Event:", error);
+    res.status(500).json({ status: "error", message: error.message });
+  }
+};
+
+// 3. JOIN / REGISTER EVENT
+exports.joinEvent = async (req, res) => {
+  try {
+    const id_subscriber = req.user.id;
+    const { id_event } = req.body;
+
+    // Cek Event
+    const event = await prisma.event.findUnique({
+      where: { id_event: parseInt(id_event) },
+    });
+
+    if (!event) {
+      return res.status(404).json({ message: "Event tidak ditemukan" });
+    }
+
+    if (event.status !== "active") {
+      return res.status(400).json({ message: "Event sudah tidak aktif" });
+    }
+
+    // Logic Event Berbayar (Nanti dikembangkan jika ada payment gateway)
+    if (event.jenis === "Berbayar") {
+      // Disini bisa return error atau redirect ke paymentController
+      // return res.status(402).json({ message: "Event ini berbayar" });
+    }
+
+    // Cek apakah sudah terdaftar
+    const existingRegistration = await prisma.eventSubscriber.findUnique({
+      where: {
+        id_event_id_subscriber: {
+          id_event: parseInt(id_event),
+          id_subscriber: parseInt(id_subscriber),
+        },
+      },
+    });
+
+    if (existingRegistration) {
+      return res
+        .status(400)
+        .json({ message: "Anda sudah terdaftar di event ini" });
+    }
+
+    // Create Registration
+    await prisma.eventSubscriber.create({
+      data: {
+        id_event: parseInt(id_event),
+        id_subscriber: parseInt(id_subscriber),
+      },
+    });
+
+    res
+      .status(201)
+      .json({ status: "success", message: "Berhasil mendaftar event" });
+  } catch (error) {
+    console.error("Error Join Event:", error);
     res.status(500).json({ status: "error", message: error.message });
   }
 };
