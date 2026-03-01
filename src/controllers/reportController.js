@@ -55,36 +55,41 @@ const getReportData = async (req, res) => {
         ]);
 
         // 3. MAPPING REVENUE (Fixing Sinkronisasi Tanggal/Hari)
-        // 3. MAPPING REVENUE (Ganti bagian ini saja)
         const labels = intervals.map(date => format(date, formatKey));
 
         const currentData = intervals.map(date => {
-            const target = format(date, 'yyyy-MM-dd');
+            const targetDateStr = format(date, 'yyyy-MM-dd'); // Kunci tanggal hari ini
             return incomeCurrent
-                .filter(t => format(new Date(t.created_at), 'yyyy-MM-dd') === target)
+                .filter(t => format(new Date(t.created_at), 'yyyy-MM-dd') === targetDateStr)
                 .reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
         });
 
         const lastData = intervals.map(date => {
-            let targetLast;
-            // Logika: Cari tanggal pembanding yang sejajar di periode lalu
+            // Jika period mingguan, kita cari data yang TEPAT 7 hari sebelum label chart
+            // Misal label chart "Mon" (1 Mar), kita cari data 22 Feb.
+            let targetDateLast;
             if (period === 'week') {
-                targetLast = format(subDays(date, 7), 'yyyy-MM-dd'); // Senin vs Senin lalu
+                targetDateLast = format(subDays(date, 7), 'yyyy-MM-dd');
             } else if (period === 'month') {
-                targetLast = format(subMonths(date, 1), 'yyyy-MM-dd'); // Tgl 15 vs Tgl 15 lalu
+                targetDateLast = format(subMonths(date, 1), 'yyyy-MM-dd');
             } else {
-                targetLast = format(subYears(date, 1), 'yyyy-MM'); // Jan vs Jan lalu
+                targetDateLast = format(subYears(date, 1), 'yyyy-MM-dd');
             }
 
             return incomeLast
                 .filter(t => {
-                    const d = new Date(t.created_at);
-                    const tDate = period === 'year' ? format(d, 'yyyy-MM') : format(d, 'yyyy-MM-dd');
-                    return tDate === targetLast;
+                    const transDate = format(new Date(t.created_at), 'yyyy-MM-dd');
+                    
+                    // Untuk TAHUNAN, kita bandingkan Nama Bulan saja
+                    if (period === 'year') {
+                        return format(new Date(t.created_at), 'MMM') === format(date, 'MMM');
+                    }
+                    
+                    // Untuk MINGGUAN & BULANAN, kita bandingkan tanggal hasil pengurangan tadi
+                    return transDate === targetDateLast;
                 })
                 .reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
         });
-
         // 4. MAPPING BAR DATA (Hanya yg disetujui/ditolak di range waktu terpilih)
         const barData = subjects.map(s => {
             let count = 0;
