@@ -771,8 +771,7 @@ Content-Type: {{contentType}}
 @baseUrl = http://localhost:5000/api/v1
 @contentType = application/json
 
-@baseUrl = http://localhost:5000/api/v1
-@contentType = application/json
+
 
 ### ---------------------------------------------------------
 ### 1. TEST FILTER TAHUNAN (Admin ID: 13)
