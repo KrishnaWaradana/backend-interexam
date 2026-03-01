@@ -71,7 +71,7 @@ const getReportData = async (req, res) => {
         const currentMap = {};
         const lastMap = {};
 
-        // Inisialisasi label dasar (Tahun tetap Jan-Dec, Minggu tetap Sen-Min, dst)
+        // Inisialisasi label sesuai interval periode SEKARANG
         intervals.forEach(date => { 
             const label = format(date, formatKey);
             currentMap[label] = 0; 
@@ -80,29 +80,29 @@ const getReportData = async (req, res) => {
 
         // Mapping Data Sekarang (Current)
         incomeCurrent.forEach(t => {
-            const label = format(t.created_at, formatKey);
+            const label = format(new Date(t.created_at), formatKey);
             if (currentMap.hasOwnProperty(label)) {
                 currentMap[label] += Number(t.amount) || 0;
             }
         });
 
-        
+        // Mapping Data Lalu (Last) - Disamakan labelnya agar muncul di satu chart
         incomeLast.forEach(t => {
             let labelCompare;
+            const tDate = new Date(t.created_at);
             
             if (period === 'year') {
-                
-                labelCompare = format(t.at, 'MMM');
+                labelCompare = format(tDate, 'MMM');
             } else if (period === 'month') {
-                
-                const dayOnly = format(t.created_at, 'dd');
-                
+                // Ambil tanggal (01-31), lalu cari label di currentMap yang punya tanggal sama
+                const dayOnly = format(tDate, 'dd');
                 labelCompare = Object.keys(currentMap).find(key => key.startsWith(dayOnly));
             } else if (period === 'week') {
-                
-                labelCompare = format(t.created_at, 'EEE');
+                // Samakan nama harinya (Mon, Tue, dst)
+                labelCompare = format(tDate, 'EEE');
             }
 
+            // Masukkan ke lastMap jika labelnya ditemukan
             if (labelCompare && lastMap.hasOwnProperty(labelCompare)) {
                 lastMap[labelCompare] += Number(t.amount) || 0;
             }
