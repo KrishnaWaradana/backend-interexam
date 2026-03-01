@@ -55,26 +55,32 @@ const getReportData = async (req, res) => {
         ]);
 
         // 3. MAPPING REVENUE (Fixing Sinkronisasi Tanggal/Hari)
+        // 3. MAPPING REVENUE (Ganti bagian ini saja)
         const labels = intervals.map(date => format(date, formatKey));
 
         const currentData = intervals.map(date => {
-            const label = format(date, formatKey);
+            const target = format(date, 'yyyy-MM-dd');
             return incomeCurrent
-                .filter(t => format(new Date(t.created_at), formatKey) === label)
+                .filter(t => format(new Date(t.created_at), 'yyyy-MM-dd') === target)
                 .reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
         });
 
         const lastData = intervals.map(date => {
-            const targetDate = format(date, 'dd'); // Ambil tgl saja untuk pembanding bulanan
-            const targetDay = format(date, 'EEE'); // Ambil hari saja untuk pembanding mingguan
-            const targetMonth = format(date, 'MMM'); // Ambil bulan saja untuk pembanding tahunan
+            let targetLast;
+            // Logika: Cari tanggal pembanding yang sejajar di periode lalu
+            if (period === 'week') {
+                targetLast = format(subDays(date, 7), 'yyyy-MM-dd'); // Senin vs Senin lalu
+            } else if (period === 'month') {
+                targetLast = format(subMonths(date, 1), 'yyyy-MM-dd'); // Tgl 15 vs Tgl 15 lalu
+            } else {
+                targetLast = format(subYears(date, 1), 'yyyy-MM'); // Jan vs Jan lalu
+            }
 
             return incomeLast
                 .filter(t => {
                     const d = new Date(t.created_at);
-                    if (period === 'month') return format(d, 'dd') === targetDate;
-                    if (period === 'week') return format(d, 'EEE') === targetDay;
-                    return format(d, 'MMM') === targetMonth;
+                    const tDate = period === 'year' ? format(d, 'yyyy-MM') : format(d, 'yyyy-MM-dd');
+                    return tDate === targetLast;
                 })
                 .reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
         });
