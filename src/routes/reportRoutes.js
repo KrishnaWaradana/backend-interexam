@@ -15,5 +15,4 @@ const { authenticateToken } = require('../middleware/authMiddleware');
 // --- 2. VERSI RESMI (Untuk Frontend) ---
 // Hapus komentar di bawah ini dan hapus route bypass di atas jika sudah siap produksi
 router.get('/stats', authenticateToken, getReportData);
-
 module.exports = router;
