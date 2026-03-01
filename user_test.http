@@ -795,3 +795,32 @@ Content-Type: {{contentType}}
 ### ---------------------------------------------------------
 GET {{baseUrl}}/report/stats?period=week
 Content-Type: {{contentType}}
+
+
+
+@baseUrl = http://localhost:5000/api/v1
+@contentType = application/json
+
+### ---------------------------------------------------------
+### 1. TEST PERBANDINGAN TAHUNAN (Admin ID: 13)
+### Ekspektasi: labels ["Jan", "Feb", ...], current & last terisi.
+### ---------------------------------------------------------
+GET {{baseUrl}}/report/stats?period=year
+Content-Type: {{contentType}}
+x-test-id: 13
+
+### ---------------------------------------------------------
+### 2. TEST PERBANDINGAN BULANAN (Admin ID: 13)
+### Ekspektasi: labels ["01 Mar", "02 Mar", ...], current & last terisi.
+### ---------------------------------------------------------
+GET {{baseUrl}}/report/stats?period=month
+Content-Type: {{contentType}}
+x-test-id: 13
+
+### ---------------------------------------------------------
+### 3. TEST PERBANDINGAN MINGGUAN (Admin ID: 13)
+### Ekspektasi: labels ["Mon", "Tue", ...], current & last terisi.
+### ---------------------------------------------------------
+GET {{baseUrl}}/report/stats?period=week
+Content-Type: {{contentType}}
+x-test-id: 13

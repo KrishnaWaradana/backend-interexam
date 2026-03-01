@@ -67,33 +67,48 @@ const getReportData = async (req, res) => {
         const approvedSoalTotal = allSoal.filter(s => s.status === 'disetujui').length;
         const rejectedSoalTotal = allSoal.filter(s => s.status === 'ditolak').length;
 
-        // 5. MAPPING REVENUE (PERBANDINGAN CURRENT vs LAST)
+        
         const currentMap = {};
         const lastMap = {};
 
+        // Inisialisasi label dasar (Tahun tetap Jan-Dec, Minggu tetap Sen-Min, dst)
         intervals.forEach(date => { 
             const label = format(date, formatKey);
             currentMap[label] = 0; 
             lastMap[label] = 0; 
         });
 
+        // Mapping Data Sekarang (Current)
         incomeCurrent.forEach(t => {
             const label = format(t.created_at, formatKey);
-            if (currentMap.hasOwnProperty(label)) currentMap[label] += Number(t.amount) || 0;
+            if (currentMap.hasOwnProperty(label)) {
+                currentMap[label] += Number(t.amount) || 0;
+            }
         });
 
+        
         incomeLast.forEach(t => {
             let labelCompare;
-            if (period === 'year') labelCompare = format(t.created_at, 'MMM');
-            else if (period === 'week') labelCompare = format(t.created_at, 'EEE');
-            else labelCompare = format(t.created_at, 'dd MMM');
+            
+            if (period === 'year') {
+                
+                labelCompare = format(t.at, 'MMM');
+            } else if (period === 'month') {
+                
+                const dayOnly = format(t.created_at, 'dd');
+                
+                labelCompare = Object.keys(currentMap).find(key => key.startsWith(dayOnly));
+            } else if (period === 'week') {
+                
+                labelCompare = format(t.created_at, 'EEE');
+            }
 
-            if (lastMap.hasOwnProperty(labelCompare)) {
+            if (labelCompare && lastMap.hasOwnProperty(labelCompare)) {
                 lastMap[labelCompare] += Number(t.amount) || 0;
             }
         });
 
-        // 6. MAPPING BAR DATA (IKUT FILTER WAKTU)
+        
         const barData = subjects.map(s => {
             let count = 0;
             s.topics.forEach(t => {
