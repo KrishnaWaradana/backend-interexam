@@ -108,6 +108,21 @@ router.post(
   libraryController.addToFolder,
 );
 
+router.get(
+  "/folder/:slug/questions",
+  authenticateToken,
+  isSubscriber,
+  libraryController.getFolderQuestions,
+);
+router.post(
+  "/folder/submit-practice",
+  authenticateToken,
+  isSubscriber,
+  libraryController.submitFolderPractice,
+);
+
+router.post("/report", authenticateToken, libraryController.reportSoal);
+
 // --- PAKET SOAL ---
 
 // 10. GET ALL PAKETS WITH PROGRESS (Halaman Course/Latihan)
@@ -204,32 +219,11 @@ router.get(
   examController.getDiscussion,
 );
 
-// Endpoint pengecekan status paket langganan pada subscriber
 router.get(
   "/check-status",
   authenticateToken,
   isSubscriber,
-  async (req, res) => {
-    try {
-      const id_subscriber = req.user.id_user || req.user.id;
-
-      // Cek subscription aktif
-      const activeSub = await prisma.subscribePaket.findFirst({
-        where: {
-          id_subscriber: parseInt(id_subscriber),
-          status: "active",
-          tanggal_selesai: { gte: new Date() },
-        },
-      });
-
-      res.json({
-        status: "success",
-        is_premium: !!activeSub, // true jika ada, false jika null
-      });
-    } catch (error) {
-      res.status(500).json({ is_premium: false });
-    }
-  },
+  libraryController.checkPremiumStatus,
 );
 
 router.get(
