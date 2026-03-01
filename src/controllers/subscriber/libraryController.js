@@ -554,6 +554,56 @@ exports.addToFolder = async (req, res) => {
   }
 };
 
+exports.reportSoal = async (req, res) => {
+  try {
+    // 1. Ambil ID Subscriber dari token (asumsi menggunakan middleware verifyToken)
+    const id_subscriber = req.user.id || req.user.id_subscriber;
+
+    // 2. Ambil data dari body request frontend
+    const { id_soal, keterangan } = req.body;
+
+    // 3. Validasi input
+    if (!id_soal) {
+      return res.status(400).json({
+        status: "error",
+        message: "ID Soal tidak boleh kosong.",
+      });
+    }
+
+    if (!keterangan || keterangan.trim() === "") {
+      return res.status(400).json({
+        status: "error",
+        message: "Keterangan laporan tidak boleh kosong.",
+      });
+    }
+
+    // 4. Simpan laporan ke database
+    const newReport = await prisma.reports.create({
+      data: {
+        id_subscriber: parseInt(id_subscriber),
+        id_soal: parseInt(id_soal),
+        keterangan: keterangan,
+        tanggal_report: new Date(),
+        status: "pending", // Status default saat pertama kali dilapor
+      },
+    });
+
+    // 5. Kirim response sukses
+    return res.status(201).json({
+      status: "success",
+      message: "Laporan berhasil dikirim. Terima kasih atas masukan Anda!",
+      data: newReport,
+    });
+  } catch (error) {
+    console.error("Error Report Soal:", error);
+    return res.status(500).json({
+      status: "error",
+      message: "Terjadi kesalahan saat mengirim laporan.",
+      error: error.message,
+    });
+  }
+};
+
 exports.getAllEvents = async (req, res) => {
   try {
     const { search, category, page = 1, limit = 10 } = req.query;
@@ -785,5 +835,278 @@ exports.joinEvent = async (req, res) => {
   } catch (error) {
     console.error("Error Join Event:", error);
     res.status(500).json({ status: "error", message: error.message });
+  }
+};
+
+exports.checkPremiumStatus = async (req, res) => {
+  try {
+    // 1. Samakan persis dengan getPaketDetailById
+    const id_subscriber = parseInt(req.user.id);
+
+    if (!id_subscriber) {
+      return res.status(401).json({ status: "error", message: "Unauthorized" });
+    }
+
+    const activeSub = await prisma.subscribePaket.findFirst({
+      where: {
+        id_subscriber: id_subscriber,
+        status: "active",
+        tanggal_selesai: { gte: new Date() },
+      },
+    });
+
+    return res.status(200).json({
+      status: "success",
+      is_premium: !!activeSub, // Jaminan kirim boolean true/false
+      subscription: activeSub || null,
+    });
+  } catch (error) {
+    res.status(500).json({ status: "error", message: error.message });
+  }
+};
+
+const slugify = (text) => {
+  return text
+    .toString()
+    .toLowerCase()
+    .trim()
+    .replace(/\s+/g, "-") // Ganti spasi dengan -
+    .replace(/[^\w\-]+/g, "") // Hapus karakter non-word
+    .replace(/\-\-+/g, "-"); // Ganti multiple - dengan single -
+};
+
+exports.getFolderQuestions = async (req, res) => {
+  try {
+    const id_subscriber = parseInt(req.user.id || req.user.id_subscriber);
+    const { slug } = req.params;
+
+    let targetFolderId = null;
+    let folderName = "Favorit Umum";
+
+    // 1. Tentukan ID Folder berdasarkan slug
+    if (slug !== "umum") {
+      const userFolders = await prisma.folders.findMany({
+        where: { id_subscriber },
+      });
+
+      const matchedFolder = userFolders.find(
+        (f) => slugify(f.nama_folder) === slug,
+      );
+
+      if (!matchedFolder) {
+        return res.status(404).json({
+          status: "error",
+          message: "Folder tidak ditemukan.",
+        });
+      }
+      targetFolderId = matchedFolder.id_folder;
+      folderName = matchedFolder.nama_folder;
+    }
+
+    // 2. Ambil soal dari tabel Favorites
+    const favorites = await prisma.favorites.findMany({
+      where: {
+        id_subscriber,
+        id_folder: targetFolderId,
+      },
+      include: {
+        soal: {
+          include: {
+            jawaban: {
+              orderBy: { id_jawaban: "asc" }, // Pastikan urutan jawaban selalu sama
+            },
+            topic: {
+              include: { subject: true },
+            },
+          },
+        },
+      },
+      orderBy: { id_favorite: "asc" }, // Wajib diurutkan agar index-nya konsisten dengan saat submit
+    });
+
+    if (favorites.length === 0) {
+      return res.status(404).json({
+        status: "error",
+        message: "Tidak ada soal di folder ini.",
+      });
+    }
+
+    // 3. Format soal (Sembunyikan kunci jawaban untuk frontend)
+    const formattedSoal = favorites.map((fav) => {
+      const s = fav.soal;
+
+      const formattedOptions = s.jawaban.map((j) => ({
+        id: j.id_jawaban,
+        text: j.opsi_jawaban_text,
+        image: j.path_gambar_jawaban,
+        // STATUS (Kunci Jawaban) TIDAK DIKIRIM KE FRONTEND!
+      }));
+
+      return {
+        id_soal: s.id_soal,
+        text_soal: s.text_soal,
+        jenis_soal: s.jenis_soal,
+        level_kesulitan: s.level_kesulitan,
+        options: formattedOptions,
+        topic: s.topic?.nama_topics,
+        subject: s.topic?.subject?.nama_subject,
+      };
+    });
+
+    return res.status(200).json({
+      status: "success",
+      data: {
+        folderId: targetFolderId,
+        folderName: folderName,
+        soal: formattedSoal,
+      },
+    });
+  } catch (error) {
+    console.error("Error Get Folder Questions:", error);
+    res.status(500).json({ status: "error", message: error.message });
+  }
+};
+
+exports.submitFolderPractice = async (req, res) => {
+  try {
+    const id_subscriber = parseInt(req.user.id || req.user.id_subscriber);
+
+    // 1. Ambil payload dan berikan default value agar tidak undefined
+    const { folderSlug = "umum", answers = {} } = req.body;
+
+    console.log(
+      `[SUBMIT LATIHAN] Mulai proses. User: ${id_subscriber}, Folder: ${folderSlug}`,
+    );
+    console.log(`[SUBMIT LATIHAN] Jawaban diterima:`, answers);
+
+    let targetFolderId = null;
+
+    // 2. Tentukan ID Folder berdasarkan slug
+    if (folderSlug !== "umum") {
+      const userFolders = await prisma.folders.findMany({
+        where: { id_subscriber },
+      });
+      const matchedFolder = userFolders.find(
+        (f) => slugify(f.nama_folder) === folderSlug,
+      );
+      if (matchedFolder) targetFolderId = matchedFolder.id_folder;
+    }
+
+    // 3. Ambil soal asli beserta KUNCI JAWABAN (status)
+    const favorites = await prisma.favorites.findMany({
+      where: { id_subscriber, id_folder: targetFolderId },
+      include: {
+        soal: {
+          include: {
+            jawaban: { orderBy: { id_jawaban: "asc" } },
+          },
+        },
+      },
+      orderBy: { id_favorite: "asc" },
+    });
+
+    if (favorites.length === 0) {
+      console.log(`[SUBMIT LATIHAN] ❌ Gagal: Tidak ada soal di folder.`);
+      return res
+        .status(400)
+        .json({ status: "error", message: "Tidak ada soal untuk dikoreksi." });
+    }
+
+    let benar = 0;
+    let salah = 0;
+    let kosong = 0;
+    const pembahasan = [];
+
+    // 4. Proses Koreksi
+    favorites.forEach((fav) => {
+      const soal = fav.soal;
+
+      // Ambil jawaban dari frontend (bisa berupa angka ID atau Teks)
+      const rawUserAnswer =
+        answers[soal.id_soal] || answers[soal.id_soal.toString()];
+
+      let isCorrect = false;
+      const correctOption = soal.jawaban.find((j) => j.status === true);
+
+      let finalUserOptionId = null;
+
+      // Cek apakah ada jawabannya
+      if (
+        rawUserAnswer !== undefined &&
+        rawUserAnswer !== null &&
+        rawUserAnswer !== ""
+      ) {
+        // 🚀 SUPER FIX: Cari opsi yang dipilih berdasarkan ID ATAU Teks
+        const matchedOption = soal.jawaban.find(
+          (j) =>
+            j.id_jawaban.toString() === rawUserAnswer.toString() ||
+            j.opsi_jawaban_text === rawUserAnswer,
+        );
+
+        if (matchedOption) {
+          finalUserOptionId = matchedOption.id_jawaban; // Kunci ID-nya!
+
+          if (correctOption && finalUserOptionId === correctOption.id_jawaban) {
+            benar++;
+            isCorrect = true;
+          } else {
+            salah++;
+          }
+        } else {
+          // Jika frontend mengirim teks aneh yang tidak ada di opsi
+          salah++;
+        }
+      } else {
+        kosong++;
+      }
+
+      // Format opsi untuk UI Pembahasan
+      const optionsArray = soal.jawaban.map((j) => ({
+        id_jawaban: j.id_jawaban,
+        teks: j.opsi_jawaban_text,
+        is_correct: j.status === true,
+      }));
+
+      pembahasan.push({
+        id_soal: soal.id_soal,
+        text_soal: soal.text_soal,
+        is_correct: isCorrect,
+        user_answer: finalUserOptionId, // 👈 Sekarang PASTI mengirim angka (atau null)
+        correct_answer: correctOption ? correctOption.id_jawaban : null,
+        pembahasan_text: correctOption
+          ? correctOption.pembahasan
+          : "Tidak ada pembahasan.",
+        options: optionsArray,
+      });
+    });
+
+    const totalSoal = favorites.length;
+    const score = totalSoal > 0 ? (benar / totalSoal) * 100 : 0;
+
+    console.log(
+      `[SUBMIT LATIHAN] ✅ Selesai. Skor: ${score} (B:${benar}, S:${salah}, K:${kosong})`,
+    );
+
+    // 5. Kembalikan hasil
+    return res.status(200).json({
+      status: "success",
+      data: {
+        total_soal: totalSoal,
+        terjawab: benar + salah,
+        benar,
+        salah,
+        kosong,
+        score: Math.round(score),
+        details: pembahasan,
+      },
+    });
+  } catch (error) {
+    // Tampilkan error penuh di console backend
+    console.error("=== ERROR SUBMIT PRACTICE ===");
+    console.error(error);
+    res.status(500).json({
+      status: "error",
+      message: error.message || "Terjadi kesalahan internal",
+    });
   }
 };

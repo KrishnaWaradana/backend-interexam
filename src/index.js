@@ -26,8 +26,8 @@ const paymentRoutes = require("./routes/paymentRoutes");
 const workflowRoutes = require("./routes/workflowRoutes");
 const eventRoutes = require("./routes/eventRoutes");
 const publicRoutes = require("./routes/publicRoutes");
-const dashboardRoutes = require('./routes/dashboardRoutes');
-const reportRoutes = require('./routes/reportRoutes');
+const dashboardRoutes = require("./routes/dashboardRoutes");
+const reportRoutes = require("./routes/reportRoutes");
 
 // ==========================================
 // 1. MIDDLEWARE GLOBAL & KEAMANAN
@@ -56,8 +56,9 @@ app.use(
     allowedHeaders: [
       "Content-Type",
       "Authorization",
-      "X-Requested-With",
-      "Accept",
+      "Cache-Control",
+      "Pragma",
+      "Expires",
     ],
   }),
 );
@@ -71,6 +72,21 @@ app.use((req, res, next) => {
   );
   next();
 });
+
+// D-2. 🔥 CACHE CONTROL MIDDLEWARE (CRITICAL) - Disable caching untuk API responses
+// Ini sangat penting untuk endpoint check-status agar tidak cache stale data
+// app.use((req, res, next) => {
+//   // Khusus untuk API endpoints, set aggressive cache-control
+//   if (req.path.startsWith("/api/")) {
+//     res.setHeader(
+//       "Cache-Control",
+//       "no-store, no-cache, must-revalidate, max-age=0, proxy-revalidate",
+//     );
+//     res.setHeader("Pragma", "no-cache");
+//     res.setHeader("Expires", "0");
+//   }
+//   next();
+// });
 
 // E. Folder Uploads Static
 app.use("/uploads", express.static(path.join(__dirname, "../uploads")));
@@ -123,9 +139,9 @@ app.use("/api/v1/payment", paymentRoutes);
 
 app.use("/api/v1/workflow", workflowRoutes);
 
-app.use('/api/v1/dashboard', dashboardRoutes);
+app.use("/api/v1/dashboard", dashboardRoutes);
 
-app.use('/api/v1/report', reportRoutes);
+app.use("/api/v1/report", reportRoutes);
 // ==========================================
 // 3. ERROR HANDLING (PENANGKAP ERROR)
 // ==========================================

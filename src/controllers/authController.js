@@ -1,6 +1,6 @@
-const { PrismaClient } = require('@prisma/client');
-const jwt = require('jsonwebtoken');
-const { verifyGoogleToken } = require('../utils/googleAuth');
+const { PrismaClient } = require("@prisma/client");
+const jwt = require("jsonwebtoken");
+const { verifyGoogleToken } = require("../utils/googleAuth");
 
 const prisma = new PrismaClient();
 const JWT_SECRET = process.env.JWT_SECRET;
@@ -11,7 +11,7 @@ const JWT_SECRET = process.env.JWT_SECRET;
 exports.googleLogin = async (req, res) => {
   // roleTarget: 'subscriber' atau 'internal'
   // requestRole: 'Validator' atau 'Contributor' (hanya jika register internal)
-  const { token, roleTarget, requestRole } = req.body; 
+  const { token, roleTarget, requestRole } = req.body;
 
   if (!token) return res.status(400).json({ message: "Token is required" });
 
@@ -21,31 +21,31 @@ exports.googleLogin = async (req, res) => {
     const { googleId, email, name, picture } = googlePayload;
 
     let user = null;
-    let userRole = '';
-    let dbPayload = {}; 
+    let userRole = "";
+    let dbPayload = {};
 
     // ------------------------------------------
     // LOGIC A: SUBSCRIBER (Siswa/User Umum)
     // ------------------------------------------
-    if (roleTarget === 'subscriber') {
-      
+    if (roleTarget === "subscriber") {
       // Cross VALIDASI 1: Cek di tabel Users (Internal) dulu
       // Mencegah akun Staff login/daftar sebagai Siswa
       const isInternal = await prisma.users.findFirst({
-        where: { email_user: email }
+        where: { email_user: email },
       });
 
       if (isInternal) {
-        return res.status(400).json({ 
-          message: "Email ini terdaftar sebagai Staff/Admin. Gunakan menu login Contributor/Validator." 
+        return res.status(400).json({
+          message:
+            "Email ini terdaftar sebagai Staff/Admin. Gunakan menu login Contributor/Validator.",
         });
       }
 
       // --- Lanjut Logic Subscriber ---
-      
+
       // Cek apakah subscriber sudah ada?
       user = await prisma.subscribers.findFirst({
-        where: { OR: [{ googleId: googleId }, { email_subscriber: email }] }
+        where: { OR: [{ googleId: googleId }, { email_subscriber: email }] },
       });
 
       // Jika belum ada, Auto Register
@@ -55,51 +55,54 @@ exports.googleLogin = async (req, res) => {
             email_subscriber: email,
             nama_subscriber: name,
             googleId: googleId,
-            foto: picture 
-          }
+            foto: picture,
+          },
         });
       } else {
         // Jika user lama (belum ada googleId), update
         if (!user.googleId) {
           user = await prisma.subscribers.update({
             where: { id_subscriber: user.id_subscriber },
-            data: { googleId: googleId }
+            data: { googleId: googleId },
           });
         }
       }
-      
-      userRole = 'subscriber';
-      dbPayload = { id: user.id_subscriber, role: 'subscriber' };
-    } 
-    
+
+      userRole = "subscriber";
+      dbPayload = { id: user.id_subscriber, role: "subscriber" };
+    }
+
     // ------------------------------------------
     // LOGIC B: INTERNAL (Admin/Validator/Contributor)
     // ------------------------------------------
     else {
-
       // Cross VALIDASI 2: Cek di tabel Subscribers (Siswa) dulu
       // Mencegah akun Siswa login/daftar sebagai Staff
       const isSubscriber = await prisma.subscribers.findFirst({
-        where: { email_subscriber: email }
+        where: { email_subscriber: email },
       });
 
       if (isSubscriber) {
-        return res.status(400).json({ 
-          message: "Email ini terdaftar sebagai Siswa. Gunakan menu login Siswa." 
+        return res.status(400).json({
+          message:
+            "Email ini terdaftar sebagai Siswa. Gunakan menu login Siswa.",
         });
       }
 
       // Cek apakah user internal sudah ada?
       user = await prisma.users.findFirst({
-        where: { OR: [{ googleId: googleId }, { email_user: email }] }
+        where: { OR: [{ googleId: googleId }, { email_user: email }] },
       });
 
       // --- Skenario 1: User Belum Ada (Register Baru) ---
       if (!user) {
-        if (!requestRole || !['Validator', 'Contributor'].includes(requestRole)) {
-           return res.status(400).json({ 
-             message: "Pilih role: Validator atau Contributor." 
-           });
+        if (
+          !requestRole ||
+          !["Validator", "Contributor"].includes(requestRole)
+        ) {
+          return res.status(400).json({
+            message: "Pilih role: Validator atau Contributor.",
+          });
         }
 
         // Buat User Baru (Status Unverified) & Catat History
@@ -111,39 +114,39 @@ exports.googleLogin = async (req, res) => {
               googleId: googleId,
               role: requestRole,
               foto: picture,
-              status: 'Unverified'
-            }
+              status: "Unverified",
+            },
           });
 
           // Catat History
           await tx.userStatus.create({
             data: {
               id_user: newUser.id_user,
-              status: 'Unverified',
-              description: 'Pendaftaran baru via Google',
-              created_at: new Date()
-            }
+              status: "Unverified",
+              description: "Pendaftaran baru via Google",
+              created_at: new Date(),
+            },
           });
         });
 
         // STOP & INFO KE USER
         return res.status(200).json({
           message: "Pendaftaran berhasil. Akun menunggu persetujuan Admin.",
-          status: "pending"
+          status: "pending",
         });
       }
 
       // --- Skenario 2: User Sudah Ada (Login) ---
-      
+
       // Cek Status (Snapshot)
-      if (user.status === 'Unverified') {
-        return res.status(403).json({ 
+      if (user.status === "Unverified") {
+        return res.status(403).json({
           message: "Akun belum disetujui Admin. Hubungi admin.",
-          status: "pending"
+          status: "pending",
         });
       }
 
-      if (user.status === 'Suspend') { 
+      if (user.status === "Suspend") {
         return res.status(403).json({ message: "Akun Anda disuspend." });
       }
 
@@ -151,7 +154,7 @@ exports.googleLogin = async (req, res) => {
       if (!user.googleId) {
         await prisma.users.update({
           where: { id_user: user.id_user },
-          data: { googleId: googleId }
+          data: { googleId: googleId },
         });
       }
 
@@ -160,23 +163,25 @@ exports.googleLogin = async (req, res) => {
     }
 
     // 3. Buat JWT Token
-    const appToken = jwt.sign(dbPayload, JWT_SECRET, { expiresIn: '1d' });
+    const appToken = jwt.sign(dbPayload, JWT_SECRET, { expiresIn: "1d" });
 
     return res.status(200).json({
       message: "Login success",
       token: appToken,
       user: {
         id: dbPayload.id,
-        name: roleTarget === 'subscriber' ? user.nama_subscriber : user.nama_user,
+        name:
+          roleTarget === "subscriber" ? user.nama_subscriber : user.nama_user,
         email: email,
         role: userRole,
-        photo: picture
-      }
+        photo: picture,
+      },
     });
-
   } catch (error) {
     console.error("Google Login Error:", error);
-    return res.status(401).json({ message: "Auth failed", error: error.message });
+    return res
+      .status(401)
+      .json({ message: "Auth failed", error: error.message });
   }
 };
 
@@ -185,11 +190,12 @@ exports.googleLogin = async (req, res) => {
 // ==========================================
 exports.getMe = async (req, res) => {
   try {
-    const { id, role } = req.user; 
+    const { id, role } = req.user;
 
     let user = null;
 
-    if (role === 'subscriber') {
+    if (role === "subscriber") {
+      // Query subscriber dengan include SubscribePaket untuk check status langganan
       user = await prisma.subscribers.findUnique({
         where: { id_subscriber: id },
         select: {
@@ -197,15 +203,34 @@ exports.getMe = async (req, res) => {
           nama_subscriber: true,
           email_subscriber: true,
           foto: true,
-        }
+          subscribePaket: {
+            select: {
+              id_subscribe: true,
+              status: true,
+              tanggal_selesai: true,
+            },
+          },
+        },
       });
-      
-      if (user) {
-        user.role = 'subscriber';
-        user.nama = user.nama_subscriber; 
-        user.id = user.id_subscriber;     
-      }
 
+      if (user) {
+        // Compute isPremium: ada subscription dengan status 'active' dan tanggal_selesai > now
+        const now = new Date();
+        const isPremium = user.subscribePaket.some(
+          (sub) =>
+            sub.status === "active" &&
+            sub.tanggal_selesai &&
+            new Date(sub.tanggal_selesai) > now,
+        );
+
+        user.role = "subscriber";
+        user.nama = user.nama_subscriber;
+        user.id = user.id_subscriber;
+        user.isPremium = isPremium; // ✅ Tambah isPremium di response
+
+        // Hapus subscribePaket dari response (internal only, jangan expose)
+        delete user.subscribePaket;
+      }
     } else {
       user = await prisma.users.findUnique({
         where: { id_user: id },
@@ -215,25 +240,27 @@ exports.getMe = async (req, res) => {
           email_user: true,
           role: true,
           foto: true,
-          status: true
-        }
+          status: true,
+        },
       });
 
       if (user) {
         user.nama = user.nama_user;
         user.id = user.id_user;
+        user.isPremium = true; // Admin/Internal selalu premium
       }
     }
 
     if (!user) {
-      return res.status(404).json({ message: "User tidak ditemukan / Token kedaluwarsa." });
+      return res
+        .status(404)
+        .json({ message: "User tidak ditemukan / Token kedaluwarsa." });
     }
 
-    res.status(200).json({ 
-      message: "Session valid", 
-      user: user 
+    res.status(200).json({
+      message: "Session valid",
+      user: user,
     });
-
   } catch (error) {
     console.error("Error getMe:", error);
     res.status(500).json({ message: "Gagal memuat sesi user." });
@@ -241,7 +268,7 @@ exports.getMe = async (req, res) => {
 };
 
 exports.logout = async (req, res) => {
-     res.status(200).json({ 
-        message: "Logout berhasil. Silakan hapus token di Client side." 
-    });
+  res.status(200).json({
+    message: "Logout berhasil. Silakan hapus token di Client side.",
+  });
 };
