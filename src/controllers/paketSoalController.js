@@ -227,6 +227,11 @@ exports.updatePaket = async (req, res) => {
   try {
     const existingPaket = await prisma.paketSoal.findUnique({
       where: { id_paket_soal: parseInt(id) },
+      include: { 
+          soalPaket: {
+              orderBy: { id_soal_paket_soal: "asc" } 
+          } 
+      } 
     });
 
     if (!existingPaket) {
@@ -237,10 +242,16 @@ exports.updatePaket = async (req, res) => {
     let parsedSoalIds = [];
     if (soal_ids) parsedSoalIds = typeof soal_ids === 'string' ? JSON.parse(soal_ids) : soal_ids;
 
+    const currentSoalIds = existingPaket.soalPaket.map(sp => sp.id_soal);
+    const newSoalIds = parsedSoalIds.map(id => parseInt(id));
+    
+    // Jika isSoalChanged bernilai FALSE, artinya admin tidak mengutak-atik soal
+    const isSoalChanged = JSON.stringify(currentSoalIds) !== JSON.stringify(newSoalIds);
+
     let updateData = {
         nama_paket,
         deskripsi,
-        jumlah_soal: parsedSoalIds.length,
+        jumlah_soal: parsedSoalIds.length > 0 ? parsedSoalIds.length : existingPaket.jumlah_soal,
     };
 
     if (jenis) {
@@ -253,29 +264,26 @@ exports.updatePaket = async (req, res) => {
         updateData.status = status.toLowerCase();
     }
 
-    // LOGIC UPDATE KATEGORI
-    // 1. Jika ada ID kategori baru -> Connect
     if (id_category) {
         updateData.category = { connect: { id_category: parseInt(id_category) } };
     } 
-    // 2. Jika dikirim null/string kosong (artinya user menghapus kategori) -> Disconnect
     else if (id_category === null || id_category === "") {
         updateData.category = { disconnect: true };
     }
 
-    await prisma.$transaction(async (tx) => {
-      if (file) {
+    if (file) {
         updateData.image = file.path;
-        deleteFileHelper(existingPaket.image);
-      }
+    }
 
+    await prisma.$transaction(async (tx) => {
       await tx.paketSoal.update({
         where: { id_paket_soal: parseInt(id) },
         data: updateData,
       });
 
-      if (soal_ids) {
+      if (soal_ids && isSoalChanged) {
         await tx.soalPaketSoal.deleteMany({ where: { id_paket_soal: parseInt(id) } });
+        
         if (parsedSoalIds.length > 0) {
             const soalPaketData = parsedSoalIds.map((soalId) => ({
                 id_paket_soal: parseInt(id),
@@ -287,11 +295,27 @@ exports.updatePaket = async (req, res) => {
       }
     });
 
+    if (file && existingPaket.image) {
+        deleteFileHelper(existingPaket.image);
+    }
+
     res.status(200).json({ status: "success", message: "Paket berhasil diupdate." });
 
   } catch (error) {
     if (file && fs.existsSync(file.path)) fs.unlinkSync(file.path);
-    res.status(500).json({ message: error.message });
+    
+    console.error("Update Paket Error:", error);
+
+    const pesanError = error.message ? error.message.toLowerCase() : "";
+    const isDipakaiUser = error.code === 'P2003' || pesanError.includes('constraint') || pesanError.includes('deletemany');
+
+    if (isDipakaiUser) {
+        return res.status(400).json({ 
+            message: "GAGAL DISIMPAN: Paket ini sudah memiliki riwayat pengerjaan oleh User/Subscriber. Anda HANYA diperbolehkan mengubah Nama, Kategori, Deskripsi, atau Gambar. Susunan soal (tambah/hapus) TIDAK BOLEH dirubah." 
+        });
+    }
+
+    res.status(500).json({ message: "Terjadi kesalahan internal pada server saat menyimpan data." });
   }
 };
 
@@ -302,18 +326,24 @@ exports.deletePaket = async (req, res) => {
     const paket = await prisma.paketSoal.findUnique({
       where: { id_paket_soal: parseInt(id) },
     });
-    if (!paket) return res.status(404).json({ message: "Paket tidak ditemukan." });
     
-    if (paket.image) deleteFileHelper(paket.image);
-
+    if (!paket) return res.status(404).json({ message: "Paket tidak ditemukan." });
     await prisma.$transaction(async (tx) => {
       await tx.soalPaketSoal.deleteMany({ where: { id_paket_soal: parseInt(id) } });
-      await tx.paketAttempt.deleteMany({ where: { paket_soal_id_paket_soal: parseInt(id) } });
       await tx.paketSoal.delete({ where: { id_paket_soal: parseInt(id) } });
     });
     
+    if (paket.image) deleteFileHelper(paket.image);
+
     res.status(200).json({ status: "success", message: "Paket soal berhasil dihapus." });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    console.error("Delete Paket Error:", error);
+    
+    if (error.code === 'P2003') {
+        return res.status(400).json({ 
+            message: "Gagal dihapus: Paket ini sedang digunakan di dalam Event, Transaksi, atau sudah memiliki Riwayat Ujian Subscriber." 
+        });
+    }
+    res.status(500).json({ message: "Gagal menghapus paket soal. Paket soal sudah dikerjakan subscriber!.", error: error.message });
   }
 };
