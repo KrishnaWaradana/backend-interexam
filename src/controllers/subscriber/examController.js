@@ -1,6 +1,111 @@
 const { PrismaClient } = require("@prisma/client");
 const prisma = new PrismaClient();
 
+// ============================================================
+// HELPER FUNCTIONS untuk handle Multiple Answer Questions
+// ============================================================
+
+/**
+ * Normalize user answer input ke dalam bentuk array
+ * @param {string|array} userValue - Input dari user (bisa string atau array)
+ * @returns {array} Array of answer values
+ */
+function normalizeAnswers(userValue) {
+  if (Array.isArray(userValue)) {
+    return userValue;
+  }
+  if (userValue && typeof userValue === "string") {
+    return [userValue];
+  }
+  return [];
+}
+
+/**
+ * Process jawaban user untuk satu soal
+ * Handle both single dan multiple answer questions
+ * @param {object} relasi - soal relation object dari DB
+ * @param {string|array} userValue - answer(s) dari user
+ * @param {int} id_paket_attempt - paket attempt ID
+ * @param {int} id_subscriber - subscriber ID
+ * @returns {object} { historyEntries: [], isCorrect: boolean, answerCount: int }
+ */
+function processAnswersForSoal(
+  relasi,
+  userValue,
+  id_paket_attempt,
+  id_subscriber,
+) {
+  const normalizedAnswers = normalizeAnswers(userValue);
+  const historyEntries = [];
+  let isCorrect = false; // ← Default false, bukan true!
+  let answerCount = 0;
+
+  // Untuk jawaban kosong
+  if (!normalizedAnswers.length) {
+    return { historyEntries, isCorrect: false, answerCount: 0 };
+  }
+
+  // Dapatkan correct answers dari soal
+  const correctAnswerIds = relasi.soal.jawaban
+    .filter((j) => j.status === true)
+    .map((j) => j.id_jawaban);
+
+  // Proses setiap jawaban yang dipilih user
+  const processedAnswerIds = new Set();
+
+  for (const answerText of normalizedAnswers) {
+    const jawabanDitemukan = relasi.soal.jawaban.find(
+      (j) => j.opsi_jawaban_text === answerText,
+    );
+
+    if (jawabanDitemukan) {
+      // Avoid duplicate if user somehow picks same answer twice
+      if (!processedAnswerIds.has(jawabanDitemukan.id_jawaban)) {
+        processedAnswerIds.add(jawabanDitemukan.id_jawaban);
+
+        historyEntries.push({
+          id_subscriber,
+          id_paket_attempt,
+          id_soal_paket_soal: relasi.id_soal_paket_soal,
+          id_jawaban: jawabanDitemukan.id_jawaban,
+          short_answer: String(answerText),
+          tanggal: new Date(),
+        });
+      }
+    }
+  }
+
+  answerCount = processedAnswerIds.size;
+
+  // VALIDASI JAWABAN BERDASARKAN JENIS SOAL
+  if (relasi.soal.jenis_soal === "multiple_answer") {
+    // Multiple Answer: User HARUS pilih PERSIS jawaban yang benar
+    // Semua yang dipilih harus benar DAN jumlahnya pas
+    if (
+      answerCount === correctAnswerIds.length &&
+      Array.from(processedAnswerIds).every((id) =>
+        correctAnswerIds.includes(id),
+      )
+    ) {
+      isCorrect = true;
+    } else {
+      isCorrect = false;
+    }
+  } else {
+    // Single Answer (multiple_choice, true_false, short_answer):
+    // Cukup 1 jawaban benar
+    if (answerCount > 0) {
+      isCorrect = Array.from(processedAnswerIds).some((id) =>
+        correctAnswerIds.includes(id),
+      );
+    } else {
+      isCorrect = false;
+    }
+  }
+
+  return { historyEntries, isCorrect, answerCount };
+}
+
 // Get Paket Detail By Id
 exports.getPaketDetailById = async (req, res) => {
   try {
@@ -188,21 +293,15 @@ exports.saveExamProgress = async (req, res) => {
     for (const [index, userValue] of Object.entries(answers)) {
       const relasi = soalRelasi[parseInt(index)];
       if (relasi) {
-        // Cari ID jawaban berdasarkan teks yang diklik user
-        const jawabanDitemukan = relasi.soal.jawaban.find(
-          (j) => j.opsi_jawaban_text === userValue,
+        // Process answers (handle both single dan multiple)
+        const { historyEntries: entries } = processAnswersForSoal(
+          relasi,
+          userValue,
+          attempt.id_paket_attempt,
+          id_subscriber,
         );
 
-        if (jawabanDitemukan) {
-          historyEntries.push({
-            id_subscriber,
-            id_paket_attempt: attempt.id_paket_attempt,
-            id_soal_paket_soal: relasi.id_soal_paket_soal,
-            id_jawaban: jawabanDitemukan.id_jawaban,
-            short_answer: String(userValue),
-            tanggal: new Date(),
-          });
-        }
+        historyEntries.push(...entries);
       }
     }
 
@@ -267,26 +366,29 @@ exports.submitExam = async (req, res) => {
       const relasi = soalRelasi[parseInt(index)];
 
       if (relasi) {
-        const jawabanDitemukan = relasi.soal.jawaban.find(
-          (j) => j.opsi_jawaban_text === userValue,
+        // Process answers (handle both single dan multiple)
+        const {
+          historyEntries: entries,
+          isCorrect,
+          answerCount,
+        } = processAnswersForSoal(
+          relasi,
+          userValue,
+          attempt.id_paket_attempt,
+          id_subscriber,
         );
 
-        if (jawabanDitemukan) {
-          const isCorrect = jawabanDitemukan.status === true;
+        // Add skor_point to each entry
+        const entriesWithScore = entries.map((entry) => ({
+          ...entry,
+          skor_point: isCorrect ? POIN_PER_SOAL : 0,
+        }));
 
-          const earnedPoint = isCorrect ? POIN_PER_SOAL : 0;
+        historyEntries.push(...entriesWithScore);
 
-          if (isCorrect) correctCount++;
-
-          historyEntries.push({
-            id_subscriber,
-            id_paket_attempt: attempt.id_paket_attempt,
-            id_soal_paket_soal: relasi.id_soal_paket_soal,
-            id_jawaban: jawabanDitemukan.id_jawaban,
-            short_answer: String(userValue),
-            tanggal: new Date(),
-            skor_point: parseFloat(earnedPoint),
-          });
+        // Count as correct if user answered correctly
+        if (isCorrect && answerCount > 0) {
+          correctCount++;
         }
       }
     }
@@ -313,7 +415,7 @@ exports.submitExam = async (req, res) => {
       data: {
         score: finalScore,
         correct: correctCount,
-        wrong: historyEntries.length - correctCount,
+        wrong: totalSoal - correctCount,
         unanswered: totalSoal - historyEntries.length,
         totalSoal: totalSoal,
       },
@@ -456,24 +558,39 @@ exports.getDiscussion = async (req, res) => {
 
     // 3. Gabungkan Data Master Soal dengan Jawaban User
     const pembahasanData = soalRelasi.map((item, index) => {
-      // Cari apakah user menjawab soal ini di history
-      const historyItem = attempt.history.find(
+      // Ambil SEMUA history entries untuk soal ini (bisa multiple untuk soal multiple_answer)
+      const historyItems = attempt.history.filter(
         (h) => h.id_soal_paket_soal === item.id_soal_paket_soal,
       );
 
       // Cari kunci jawaban yang benar dari sistem
-      const correctAnswer = item.soal.jawaban.find((j) => j.status === true);
+      const correctAnswers = item.soal.jawaban.filter((j) => j.status === true);
 
-      // Cari jawaban yang dipilih user
-      const userPickedAnswer = historyItem
-        ? item.soal.jawaban.find((j) => j.id_jawaban === historyItem.id_jawaban)
-        : null;
+      // Cari jawaban yang dipilih user (bisa multiple)
+      const userPickedAnswers = historyItems
+        .map((h) =>
+          item.soal.jawaban.find((j) => j.id_jawaban === h.id_jawaban),
+        )
+        .filter((j) => j); // Filter out undefined
 
       // Tentukan status
-      const isSkipped = !historyItem;
-      const isCorrect = userPickedAnswer
-        ? userPickedAnswer.status === true
-        : false;
+      const isSkipped = historyItems.length === 0;
+      let isCorrect = false;
+
+      if (!isSkipped) {
+        // Untuk soal multiple_answer: user harus pilih PERSIS jawaban yang benar
+        if (item.soal.jenis_soal === "multiple_answer") {
+          if (
+            userPickedAnswers.length === correctAnswers.length &&
+            userPickedAnswers.every((j) => j.status === true)
+          ) {
+            isCorrect = true;
+          }
+        } else {
+          // Untuk single answer: cukup satu yang benar
+          isCorrect = userPickedAnswers.some((j) => j.status === true);
+        }
+      }
 
       let statusJawaban = "dilewati";
       if (!isSkipped) {
@@ -495,19 +612,23 @@ exports.getDiscussion = async (req, res) => {
           is_correct: j.status === true,
         })),
 
-        // Detail Jawaban User
-        jawaban_user: userPickedAnswer
-          ? {
-              id_jawaban: userPickedAnswer.id_jawaban,
-              teks: userPickedAnswer.opsi_jawaban_text,
-              short_answer: historyItem.short_answer,
-            }
-          : null,
+        // Detail Jawaban User - HANDLE MULTIPLE ANSWERS
+        jawaban_user:
+          userPickedAnswers.length > 0
+            ? userPickedAnswers.map((j) => ({
+                id_jawaban: j.id_jawaban,
+                teks: j.opsi_jawaban_text,
+              }))
+            : null,
 
-        // Kunci Jawaban & Pembahasan
-        kunci_jawaban: correctAnswer ? correctAnswer.opsi_jawaban_text : null,
+        // Kunci Jawaban & Pembahasan (Untuk multiple_answer, bisa multiple)
+        kunci_jawaban:
+          correctAnswers.length > 0
+            ? correctAnswers.map((j) => j.opsi_jawaban_text).join(", ")
+            : null,
         pembahasan:
-          correctAnswer?.pembahasan || "Tidak ada pembahasan untuk soal ini.",
+          correctAnswers[0]?.pembahasan ||
+          "Tidak ada pembahasan untuk soal ini.",
       };
     });
 
@@ -734,14 +855,27 @@ exports.getEventUserReport = async (req, res) => {
       return res.status(404).json({ message: "Event tidak ditemukan." });
     }
 
-    // 2. Ambil Semua Pengerjaan (Attempt) User di Event Ini
+    // 2. Ambil Semua Pengerjaan (Attempt) User di Event Ini DENGAN soal details
     const userAttempts = await prisma.paketAttempt.findMany({
       where: {
         id_event: id_event,
         subscribers_id_subscriber: id_subscriber,
         finished_at: { not: null }, // Hanya hitung yang sudah selesai di-submit
       },
-      include: { history: true },
+      include: {
+        history: true,
+        paketSoal: {
+          include: {
+            soalPaket: {
+              include: {
+                soal: {
+                  include: { jawaban: true },
+                },
+              },
+            },
+          },
+        },
+      },
     });
 
     // 3. Siapkan Variabel Penampung untuk Akumulasi "Semua Paket"
@@ -753,8 +887,9 @@ exports.getEventUserReport = async (req, res) => {
     // Objek utama yang akan dikirim ke Frontend
     const reportData = {};
 
-    // 4. Kalkulasi Per Paket Soal
-    event.eventPaket.forEach((ep, index) => {
+    // 4. Kalkulasi Per Paket Soal (tanpa async/await loops)
+    for (let i = 0; i < event.eventPaket.length; i++) {
+      const ep = event.eventPaket[i];
       const paket = ep.paketSoal;
       const totalSoal = paket._count.soalPaket;
 
@@ -768,13 +903,53 @@ exports.getEventUserReport = async (req, res) => {
       let lewat = totalSoal; // Default dilewati semua
       let score = 0;
 
-      if (attempt && attempt.history) {
-        // Hitung jawaban benar (skor > 0)
-        benar = attempt.history.filter((h) => h.skor_point > 0).length;
-        // Hitung jawaban salah (ada di history tapi skor 0)
-        salah = attempt.history.length - benar;
-        // Hitung yang dilewati (total soal - yang dikerjakan)
-        lewat = totalSoal - attempt.history.length;
+      if (attempt && attempt.history && attempt.paketSoal) {
+        // Hitung per soal (bukan per history entry)
+        for (const soalPaket of attempt.paketSoal.soalPaket) {
+          // Cari semua history entries untuk soal ini
+          const soalHistories = attempt.history.filter(
+            (h) => h.id_soal_paket_soal === soalPaket.id_soal_paket_soal,
+          );
+
+          if (soalHistories.length === 0) {
+            // Soal tidak dikerjakan - lewati
+            lewat--;
+          } else {
+            // Soal dikerjakan, cek apakah benar atau salah berdasarkan soal type
+            const soal = soalPaket.soal;
+            const correctAnswerIds = soal.jawaban
+              .filter((j) => j.status === true)
+              .map((j) => j.id_jawaban);
+
+            const userAnswerIds = soalHistories.map((h) => h.id_jawaban);
+
+            let soalBenar = false;
+
+            if (soal.jenis_soal === "multiple_answer") {
+              // Untuk multiple_answer: user harus pilih PERSIS jawaban yang benar
+              if (
+                userAnswerIds.length === correctAnswerIds.length &&
+                userAnswerIds.every((id) => correctAnswerIds.includes(id))
+              ) {
+                soalBenar = true;
+              }
+            } else {
+              // Untuk single answer: cukup satu yang benar
+              soalBenar = userAnswerIds.some((id) =>
+                correctAnswerIds.includes(id),
+              );
+            }
+
+            if (soalBenar) {
+              benar++;
+            } else {
+              salah++;
+            }
+
+            // Update lewat count
+            lewat--;
+          }
+        }
         // Hitung skor paket (Benar / Total Soal * 100)
         score = totalSoal > 0 ? Math.round((benar / totalSoal) * 100) : 0;
       }
@@ -788,7 +963,7 @@ exports.getEventUserReport = async (req, res) => {
       // Masukkan ke object response dengan key unik (misal: "paket_12", dsb)
       // Key ini akan digunakan oleh Frontend di elemen <select> dropdown
       reportData[`paket_${paket.id_paket_soal}`] = {
-        title: `Paket ${index + 1}: ${paket.nama_paket}`,
+        title: `Paket ${i + 1}: ${paket.nama_paket}`,
         slug: slugify(paket.nama_paket), // Fungsi slugify (harus buat helper atau ganti pakai ID)
         paketId: paket.id_paket_soal,
         score,
@@ -797,7 +972,7 @@ exports.getEventUserReport = async (req, res) => {
         lewat,
         totalSoal,
       };
-    });
+    }
 
     // 5. Kalkulasi Skor Keseluruhan Event
     const allScore =
@@ -901,6 +1076,17 @@ exports.getEventLeaderboard = async (req, res) => {
           select: { id_subscriber: true, nama_subscriber: true, foto: true },
         },
         history: true,
+        paketSoal: {
+          include: {
+            soalPaket: {
+              include: {
+                soal: {
+                  include: { jawaban: true },
+                },
+              },
+            },
+          },
+        },
       },
     });
 
@@ -923,11 +1109,51 @@ exports.getEventLeaderboard = async (req, res) => {
 
       const stats = userStats.get(userId);
 
-      // Hitung jawaban benar di attempt ini
-      const benar = attempt.history.filter(
-        (h) => (h.skor_point || 0) > 0,
-      ).length;
-      stats.benar += benar;
+      // Hitung jawaban benar PER SOAL (bukan per history entry)
+      // untuk handle multiple_answer correctly
+      let attemptBenar = 0;
+
+      if (attempt.paketSoal && attempt.paketSoal.soalPaket) {
+        for (const soalPaket of attempt.paketSoal.soalPaket) {
+          // Cari semua history entries untuk soal ini
+          const soalHistories = attempt.history.filter(
+            (h) => h.id_soal_paket_soal === soalPaket.id_soal_paket_soal,
+          );
+
+          if (soalHistories.length > 0) {
+            // Soal dikerjakan, cek apakah benar atau salah berdasarkan soal type
+            const soal = soalPaket.soal;
+            const correctAnswerIds = soal.jawaban
+              .filter((j) => j.status === true)
+              .map((j) => j.id_jawaban);
+
+            const userAnswerIds = soalHistories.map((h) => h.id_jawaban);
+
+            let soalBenar = false;
+
+            if (soal.jenis_soal === "multiple_answer") {
+              // Untuk multiple_answer: user harus pilih PERSIS jawaban yang benar
+              if (
+                userAnswerIds.length === correctAnswerIds.length &&
+                userAnswerIds.every((id) => correctAnswerIds.includes(id))
+              ) {
+                soalBenar = true;
+              }
+            } else {
+              // Untuk single answer: cukup satu yang benar
+              soalBenar = userAnswerIds.some((id) =>
+                correctAnswerIds.includes(id),
+              );
+            }
+
+            if (soalBenar) {
+              attemptBenar++;
+            }
+          }
+        }
+      }
+
+      stats.benar += attemptBenar;
 
       // Hitung durasi (Waktu Selesai - Waktu Mulai) dalam milidetik
       const start = new Date(attempt.started_at).getTime();

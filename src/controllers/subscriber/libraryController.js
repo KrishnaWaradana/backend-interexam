@@ -1021,14 +1021,16 @@ exports.submitFolderPractice = async (req, res) => {
     favorites.forEach((fav) => {
       const soal = fav.soal;
 
-      // Ambil jawaban dari frontend (bisa berupa angka ID atau Teks)
+      // Ambil jawaban dari frontend (bisa berupa angka ID, Teks, atau ARRAY)
       const rawUserAnswer =
         answers[soal.id_soal] || answers[soal.id_soal.toString()];
 
       let isCorrect = false;
-      const correctOption = soal.jawaban.find((j) => j.status === true);
+      const correctOptions = soal.jawaban.filter((j) => j.status === true);
+      const correctAnswerIds = correctOptions.map((j) => j.id_jawaban);
 
-      let finalUserOptionId = null;
+      let userAnswerIds = [];
+      let userAnswerTexts = [];
 
       // Cek apakah ada jawabannya
       if (
@@ -1036,25 +1038,48 @@ exports.submitFolderPractice = async (req, res) => {
         rawUserAnswer !== null &&
         rawUserAnswer !== ""
       ) {
-        // 🚀 SUPER FIX: Cari opsi yang dipilih berdasarkan ID ATAU Teks
-        const matchedOption = soal.jawaban.find(
-          (j) =>
-            j.id_jawaban.toString() === rawUserAnswer.toString() ||
-            j.opsi_jawaban_text === rawUserAnswer,
-        );
+        // Handle both single answer (string/number) dan multiple answers (array)
+        const normalizedAnswers = Array.isArray(rawUserAnswer)
+          ? rawUserAnswer
+          : [rawUserAnswer];
 
-        if (matchedOption) {
-          finalUserOptionId = matchedOption.id_jawaban; // Kunci ID-nya!
+        // 🚀 LOGIC UNTUK HANDLE MULTIPLE ANSWERS
+        for (const answer of normalizedAnswers) {
+          const matchedOption = soal.jawaban.find(
+            (j) =>
+              j.id_jawaban.toString() === answer.toString() ||
+              j.opsi_jawaban_text === answer,
+          );
 
-          if (correctOption && finalUserOptionId === correctOption.id_jawaban) {
+          if (matchedOption) {
+            userAnswerIds.push(matchedOption.id_jawaban);
+            userAnswerTexts.push(matchedOption.opsi_jawaban_text);
+          }
+        }
+
+        // Tentukan apakah jawaban benar
+        if (soal.jenis_soal === "multiple_answer") {
+          // Untuk multiple_answer: user harus pilih PERSIS jawaban yang benar
+          if (
+            userAnswerIds.length === correctAnswerIds.length &&
+            userAnswerIds.every((id) => correctAnswerIds.includes(id))
+          ) {
             benar++;
             isCorrect = true;
           } else {
             salah++;
           }
         } else {
-          // Jika frontend mengirim teks aneh yang tidak ada di opsi
-          salah++;
+          // Untuk single answer: cukup satu yang benar
+          const hasCorrectAnswer = userAnswerIds.some((id) =>
+            correctAnswerIds.includes(id),
+          );
+          if (hasCorrectAnswer) {
+            benar++;
+            isCorrect = true;
+          } else {
+            salah++;
+          }
         }
       } else {
         kosong++;
@@ -1070,12 +1095,24 @@ exports.submitFolderPractice = async (req, res) => {
       pembahasan.push({
         id_soal: soal.id_soal,
         text_soal: soal.text_soal,
+        jenis_soal: soal.jenis_soal, // Tambahkan jenis soal untuk FE
         is_correct: isCorrect,
-        user_answer: finalUserOptionId, // 👈 Sekarang PASTI mengirim angka (atau null)
-        correct_answer: correctOption ? correctOption.id_jawaban : null,
-        pembahasan_text: correctOption
-          ? correctOption.pembahasan
-          : "Tidak ada pembahasan.",
+        user_answer:
+          userAnswerIds.length > 0
+            ? soal.jenis_soal === "multiple_answer"
+              ? userAnswerIds // Array untuk multiple_answer
+              : userAnswerIds[0] // Single ID untuk single answer
+            : null,
+        user_answer_texts: userAnswerTexts.length > 0 ? userAnswerTexts : null,
+        correct_answer:
+          correctAnswerIds.length > 0
+            ? soal.jenis_soal === "multiple_answer"
+              ? correctAnswerIds // Array untuk multiple_answer
+              : correctAnswerIds[0] // Single ID untuk single answer
+            : null,
+        correct_answer_texts: correctOptions.map((j) => j.opsi_jawaban_text),
+        pembahasan_text:
+          correctOptions[0]?.pembahasan || "Tidak ada pembahasan.",
         options: optionsArray,
       });
     });
