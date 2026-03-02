@@ -356,17 +356,25 @@ exports.deleteEvent = async (req, res) => {
         const event = await prisma.event.findUnique({ where: { id_event: eventId } });
         
         if (!event) return res.status(404).json({ message: "Event tidak ditemukan." });
-        await prisma.eventPaketSoal.deleteMany({ where: { id_event: eventId } });
-        await prisma.event.delete({ where: { id_event: eventId } });
+
+        // LANGSUNG GUNAKAN TRANSACTION, jangan ada delete manual di atasnya
+        await prisma.$transaction([
+            prisma.eventPaketSoal.deleteMany({ where: { id_event: eventId } }),
+            prisma.event.delete({ where: { id_event: eventId } })
+        ]);
+
+        // Hapus banner jika berhasil
         if (event.banner) deleteFile(event.banner);
 
         res.json({ message: "Event berhasil dihapus." });
     } catch (error) {
         console.error("Delete Error:", error);
         if (error.code === 'P2003') {
-            return res.status(400).json({ message: "Gagal: Event ini sedang digunakan oleh data lain." });
+            return res.status(400).json({ 
+                message: "Gagal: Event ini tidak bisa dihapus karena sudah memiliki riwayat pengerjaan oleh Subscriber." 
+            });
         }
-        res.status(500).json({ message: "Gagal menghapus event." });
+        res.status(500).json({ message: "Gagal menghapus event, event sudah dikerjakan oleh subscriber!." });
     }
 };
 
