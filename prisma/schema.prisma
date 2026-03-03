@@ -467,7 +467,7 @@
     id_paket_attempt   Int
     id_jawaban         Int
     tanggal            DateTime?
-    short_answer       String?       @db.VarChar(45)
+    short_answer       String?       @db.Text
     skor_point         Float?
     subscriber         Subscribers   @relation(fields: [id_subscriber], references: [id_subscriber])
     soalPaketSoal      SoalPaketSoal @relation(fields: [id_soal_paket_soal], references: [id_soal_paket_soal])

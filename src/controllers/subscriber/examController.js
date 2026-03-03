@@ -37,69 +37,91 @@ function processAnswersForSoal(
 ) {
   const normalizedAnswers = normalizeAnswers(userValue);
   const historyEntries = [];
-  let isCorrect = false; // ← Default false, bukan true!
+  let isCorrect = false;
   let answerCount = 0;
 
-  // Untuk jawaban kosong
   if (!normalizedAnswers.length) {
     return { historyEntries, isCorrect: false, answerCount: 0 };
   }
 
-  // Dapatkan correct answers dari soal
   const correctAnswerIds = relasi.soal.jawaban
     .filter((j) => j.status === true)
     .map((j) => j.id_jawaban);
 
-  // Proses setiap jawaban yang dipilih user
   const processedAnswerIds = new Set();
+  const isShortAnswer = relasi.soal.jenis_soal === "short_answer";
 
-  for (const answerText of normalizedAnswers) {
-    const jawabanDitemukan = relasi.soal.jawaban.find(
-      (j) => j.opsi_jawaban_text === answerText,
+  if (isShortAnswer) {
+    // --- LOGIKA KHUSUS SOAL ISIAN SINGKAT (SHORT ANSWER) ---
+    const userAnswerText = String(normalizedAnswers[0]).trim();
+    answerCount = 1;
+
+    // Cek kecocokan jawaban user dengan kunci secara case-insensitive
+    const matchedCorrectAnswer = relasi.soal.jawaban.find(
+      (j) =>
+        j.status === true &&
+        String(j.opsi_jawaban_text).trim().toLowerCase() === userAnswerText.toLowerCase()
     );
 
-    if (jawabanDitemukan) {
-      // Avoid duplicate if user somehow picks same answer twice
-      if (!processedAnswerIds.has(jawabanDitemukan.id_jawaban)) {
-        processedAnswerIds.add(jawabanDitemukan.id_jawaban);
+    isCorrect = !!matchedCorrectAnswer;
 
-        historyEntries.push({
-          id_subscriber,
-          id_paket_attempt,
-          id_soal_paket_soal: relasi.id_soal_paket_soal,
-          id_jawaban: jawabanDitemukan.id_jawaban,
-          short_answer: String(answerText),
-          tanggal: new Date(),
-        });
-      }
-    }
-  }
+    // Ambil referensi ID (pakai ID kunci jika benar, atau default opsi pertama jika salah agar relasi DB tidak error)
+    const idJawabanRef = matchedCorrectAnswer ? matchedCorrectAnswer.id_jawaban : relasi.soal.jawaban[0]?.id_jawaban;
 
-  answerCount = processedAnswerIds.size;
-
-  // VALIDASI JAWABAN BERDASARKAN JENIS SOAL
-  if (relasi.soal.jenis_soal === "multiple_answer") {
-    // Multiple Answer: User HARUS pilih PERSIS jawaban yang benar
-    // Semua yang dipilih harus benar DAN jumlahnya pas
-    if (
-      answerCount === correctAnswerIds.length &&
-      Array.from(processedAnswerIds).every((id) =>
-        correctAnswerIds.includes(id),
-      )
-    ) {
-      isCorrect = true;
-    } else {
-      isCorrect = false;
+    if (idJawabanRef) {
+      historyEntries.push({
+        id_subscriber,
+        id_paket_attempt,
+        id_soal_paket_soal: relasi.id_soal_paket_soal,
+        id_jawaban: idJawabanRef,
+        // AMAN: Batasi 255 karakter agar tidak membobol limit database fisik
+        short_answer: userAnswerText.substring(0, 255),
+        tanggal: new Date(),
+      });
     }
   } else {
-    // Single Answer (multiple_choice, true_false, short_answer):
-    // Cukup 1 jawaban benar
-    if (answerCount > 0) {
-      isCorrect = Array.from(processedAnswerIds).some((id) =>
-        correctAnswerIds.includes(id),
+    // --- LOGIKA KHUSUS SOAL PILIHAN GANDA ---
+    for (const answerVal of normalizedAnswers) {
+      // Cari jawaban berdasarkan ID (biasanya dikirim FE) atau string (fallback)
+      const jawabanDitemukan = relasi.soal.jawaban.find(
+        (j) => String(j.id_jawaban) === String(answerVal) || j.opsi_jawaban_text === answerVal
       );
+
+      if (jawabanDitemukan) {
+        if (!processedAnswerIds.has(jawabanDitemukan.id_jawaban)) {
+          processedAnswerIds.add(jawabanDitemukan.id_jawaban);
+
+          historyEntries.push({
+            id_subscriber,
+            id_paket_attempt,
+            id_soal_paket_soal: relasi.id_soal_paket_soal,
+            id_jawaban: jawabanDitemukan.id_jawaban,
+            // KOSONGKAN: Pilihan ganda tidak perlu memakan ruang memori di kolom ini
+            short_answer: null, 
+            tanggal: new Date(),
+          });
+        }
+      }
+    }
+
+    answerCount = processedAnswerIds.size;
+
+    // Validasi Jawaban Pilihan Ganda
+    if (relasi.soal.jenis_soal === "multiple_answer") {
+      if (
+        answerCount === correctAnswerIds.length &&
+        Array.from(processedAnswerIds).every((id) =>
+          correctAnswerIds.includes(id),
+        )
+      ) {
+        isCorrect = true;
+      }
     } else {
-      isCorrect = false;
+      if (answerCount > 0) {
+        isCorrect = Array.from(processedAnswerIds).some((id) =>
+          correctAnswerIds.includes(id),
+        );
+      }
     }
   }
 
@@ -360,6 +382,7 @@ exports.submitExam = async (req, res) => {
 
     const historyEntries = [];
     let correctCount = 0;
+    let answeredCount = 0; // Track unique soal yang dijawab
     const POIN_PER_SOAL = 10;
 
     for (const [index, userValue] of Object.entries(answers)) {
@@ -390,6 +413,11 @@ exports.submitExam = async (req, res) => {
         if (isCorrect && answerCount > 0) {
           correctCount++;
         }
+
+        // Count this soal as answered if user provided any answer
+        if (answerCount > 0) {
+          answeredCount++;
+        }
       }
     }
 
@@ -415,8 +443,8 @@ exports.submitExam = async (req, res) => {
       data: {
         score: finalScore,
         correct: correctCount,
-        wrong: totalSoal - correctCount,
-        unanswered: totalSoal - historyEntries.length,
+        wrong: answeredCount - correctCount,
+        unanswered: totalSoal - answeredCount,
         totalSoal: totalSoal,
       },
     });
@@ -567,11 +595,18 @@ exports.getDiscussion = async (req, res) => {
       const correctAnswers = item.soal.jawaban.filter((j) => j.status === true);
 
       // Cari jawaban yang dipilih user (bisa multiple)
+      // IMPROVED: Ensure semua jawaban ditampilkan, bahkan yang tidak ditemukan di master
       const userPickedAnswers = historyItems
-        .map((h) =>
-          item.soal.jawaban.find((j) => j.id_jawaban === h.id_jawaban),
-        )
-        .filter((j) => j); // Filter out undefined
+        .map((h) => {
+          const foundAnswer = item.soal.jawaban.find((j) => j.id_jawaban === h.id_jawaban);
+          // Jika tidak ditemukan, buat object fallback dengan short_answer
+          return foundAnswer || {
+            id_jawaban: h.id_jawaban,
+            opsi_jawaban_text: h.short_answer || `[Opsi tidak ditemukan: ID ${h.id_jawaban}]`,
+            status: false,
+          };
+        })
+        .filter((j) => j); // Filter out undefined (now shouldn't happen)
 
       // Tentukan status
       const isSkipped = historyItems.length === 0;
@@ -613,13 +648,14 @@ exports.getDiscussion = async (req, res) => {
         })),
 
         // Detail Jawaban User - HANDLE MULTIPLE ANSWERS
+        // IMPROVED: Selalu kirim array, jangan null, agar frontend dapat menampilkan dengan benar
         jawaban_user:
           userPickedAnswers.length > 0
             ? userPickedAnswers.map((j) => ({
                 id_jawaban: j.id_jawaban,
                 teks: j.opsi_jawaban_text,
               }))
-            : null,
+            : [],
 
         // Kunci Jawaban & Pembahasan (Untuk multiple_answer, bisa multiple)
         kunci_jawaban:
