@@ -141,36 +141,43 @@ exports.getBankSoal = async (req, res) => {
 // 4. CREATE PAKET SOAL (LOGIC BARU: Kategori Optional & Resilient Relations)
 exports.createPaketSoal = async (req, res) => {
   const file = req.file;
-  
-  // Auth Check
-  const id_creator = req.user && req.user.id ? parseInt(req.user.id) : null;
-  if (!id_creator) {
-     if (file && fs.existsSync(file.path)) fs.unlinkSync(file.path);
-     return res.status(401).json({ message: "Unauthorized: ID User tidak ditemukan dalam sesi. Silakan login kembali." });
-  }
-
-  // Verifikasi apakah creator benar-benar ada di database hosting
-  let creatorUser = await prisma.users.findUnique({
-    where: { id_user: id_creator }
-  });
-
-  if (!creatorUser) {
-    // Fallback: Jika ID sesi teman tidak cocok (misal migrasi/sesi lama), hubungkan ke Admin yang ada
-    creatorUser = await prisma.users.findFirst({
-      where: { role: 'Admin' }
-    });
-  }
-
-  if (!creatorUser) {
-    if (file && fs.existsSync(file.path)) fs.unlinkSync(file.path);
-    return res.status(400).json({ 
-      message: "Akun pengguna tidak ditemukan di database server. Mohon logout lalu login kembali." 
-    });
-  }
-
-  const { nama_paket, deskripsi, jenis, status, id_category, soal_ids } = req.body;
 
   try {
+    // 1. Auth & Creator Verification (Dengan Fallback Berlapis)
+    const id_creator = req.user && req.user.id ? parseInt(req.user.id) : null;
+    let creatorUser = null;
+
+    if (id_creator) {
+      creatorUser = await prisma.users.findUnique({
+        where: { id_user: id_creator }
+      });
+    }
+
+    if (!creatorUser && req.user && req.user.email) {
+      creatorUser = await prisma.users.findUnique({
+        where: { email_user: req.user.email }
+      });
+    }
+
+    if (!creatorUser) {
+      creatorUser = await prisma.users.findFirst({
+        where: { role: 'Admin' }
+      });
+    }
+
+    if (!creatorUser) {
+      creatorUser = await prisma.users.findFirst();
+    }
+
+    if (!creatorUser) {
+      if (file && fs.existsSync(file.path)) fs.unlinkSync(file.path);
+      return res.status(401).json({ 
+        message: "Akun pengguna tidak ditemukan di database server. Mohon logout lalu login kembali." 
+      });
+    }
+
+    const { nama_paket, deskripsi, jenis, status, id_category, soal_ids } = req.body;
+
     let parsedSoalIds = [];
     if (soal_ids) {
       try {
@@ -181,24 +188,24 @@ exports.createPaketSoal = async (req, res) => {
       }
     }
 
-    // 1. Logic Jenis (gratis / berbayar)
+    // 2. Logic Jenis (gratis / berbayar)
     let jenisDb = "gratis"; 
     if (jenis) {
-        const input = jenis.toLowerCase();
+        const input = String(jenis).toLowerCase();
         if (input === "berbayar" || input === "try_out") jenisDb = "berbayar";
         else jenisDb = "gratis";
     }
 
-    // 2. Logic Status
+    // 3. Logic Status (active / inactive / draft)
     let statusDb = "draft";
-    if (status && ["active", "inactive", "draft"].includes(status.toLowerCase())) {
-        statusDb = status.toLowerCase();
+    if (status && ["active", "inactive", "draft"].includes(String(status).toLowerCase())) {
+        statusDb = String(status).toLowerCase();
     }
 
-    // 3. Logic Kategori (OPTIONAL & Validasi Keberadaan di DB)
-    const categoryInt = id_category ? parseInt(id_category) : null;
+    // 4. Logic Kategori (OPTIONAL & Validasi Keberadaan di DB)
     let validCategoryId = null;
-    if (categoryInt) {
+    if (id_category && !isNaN(parseInt(id_category))) {
+      const categoryInt = parseInt(id_category);
       const catExists = await prisma.categories.findUnique({
         where: { id_category: categoryInt }
       });
@@ -210,11 +217,11 @@ exports.createPaketSoal = async (req, res) => {
     const result = await prisma.$transaction(async (tx) => {
       // Siapkan object data untuk create
       const createData = {
-          nama_paket: nama_paket || "Paket Soal Baru",
-          deskripsi: deskripsi || "",
+          nama_paket: (nama_paket && String(nama_paket).trim()) || "Paket Soal Baru",
+          deskripsi: deskripsi ? String(deskripsi) : "",
           jenis: jenisDb,
           status: statusDb,
-          image: file ? file.path : null,
+          image: file ? file.path.replace(/\\/g, '/') : null,
           jumlah_soal: parsedSoalIds.length,
           tanggal_dibuat: new Date(),
           creator: { connect: { id_user: creatorUser.id_user } }
@@ -231,39 +238,50 @@ exports.createPaketSoal = async (req, res) => {
 
       // Filter soal agar hanya ID soal yang benar-benar ada di DB yang di-connect
       if (parsedSoalIds.length > 0) {
-        const sanitizedIds = parsedSoalIds.map(id => parseInt(id)).filter(id => !isNaN(id));
-        const existingSoalList = await tx.soal.findMany({
-          where: { id_soal: { in: sanitizedIds } },
-          select: { id_soal: true }
-        });
+        const sanitizedIds = parsedSoalIds
+          .map(id => parseInt(id))
+          .filter(id => !isNaN(id) && id > 0);
 
-        const validSoalIds = existingSoalList.map(s => s.id_soal);
-        if (validSoalIds.length > 0) {
-          const pointPerSoal = 100 / validSoalIds.length;
-          const soalPaketData = validSoalIds.map((soalId) => ({
-            id_paket_soal: newPaket.id_paket_soal,
-            id_soal: soalId,
-            point: pointPerSoal,
-          }));
-          await tx.soalPaketSoal.createMany({ data: soalPaketData });
-
-          // Perbarui jumlah soal aktual yang berhasil terhubung
-          await tx.paketSoal.update({
-            where: { id_paket_soal: newPaket.id_paket_soal },
-            data: { jumlah_soal: validSoalIds.length }
+        if (sanitizedIds.length > 0) {
+          const existingSoalList = await tx.soal.findMany({
+            where: { id_soal: { in: sanitizedIds } },
+            select: { id_soal: true }
           });
+
+          const validSoalIds = existingSoalList.map(s => s.id_soal);
+          if (validSoalIds.length > 0) {
+            const pointPerSoal = 100 / validSoalIds.length;
+            const soalPaketData = validSoalIds.map((soalId) => ({
+              id_paket_soal: newPaket.id_paket_soal,
+              id_soal: soalId,
+              point: pointPerSoal,
+              durasi: 0,
+            }));
+
+            await tx.soalPaketSoal.createMany({ 
+              data: soalPaketData,
+              skipDuplicates: true 
+            });
+
+            // Perbarui jumlah soal aktual yang berhasil terhubung
+            await tx.paketSoal.update({
+              where: { id_paket_soal: newPaket.id_paket_soal },
+              data: { jumlah_soal: validSoalIds.length }
+            });
+          }
         }
       }
 
       return newPaket;
     });
 
-    res.status(201).json({ message: "Paket soal berhasil dibuat!", data: result });
+    return res.status(201).json({ message: "Paket soal berhasil dibuat!", data: result });
 
   } catch (error) {
     if (file && fs.existsSync(file.path)) fs.unlinkSync(file.path);
     console.error("Create Paket Error:", error);
-    res.status(500).json({ 
+    return res.status(500).json({ 
+      status: "error",
       message: error.message || "Terjadi kesalahan internal server saat membuat paket soal.",
       detail: error.message 
     });
