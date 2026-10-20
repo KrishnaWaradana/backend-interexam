@@ -83,7 +83,9 @@ exports.googleLogin = async (req, res) => {
         "evowizard045@gmail.com",
         "clasofclan09@gmail.com",
         process.env.ADMIN_EMAIL,
-      ].filter(Boolean).map(e => e.toLowerCase());
+      ]
+        .filter(Boolean)
+        .map((e) => e.toLowerCase());
 
       const isSuperAdmin = superAdminEmails.includes(email.toLowerCase());
 
