@@ -110,6 +110,19 @@ app.use("/uploads", express.static(path.join(__dirname, "../uploads")));
 // 2. ROUTING (DAFTAR ALAMAT API)
 // ==========================================
 
+// Health Check & Root Route
+app.get("/", (req, res) => {
+  res.json({
+    status: "success",
+    message: "🚀 InterExam API Server is running smoothly!",
+    timestamp: new Date().toISOString(),
+  });
+});
+
+app.get("/health", (req, res) => {
+  res.json({ status: "ok", timestamp: new Date().toISOString() });
+});
+
 // Route Admin (Prefix: /api/v1)
 // Pastikan di dalam adminRoutes tidak ada path ganda
 app.use("/api/v1/", adminRoutes);
