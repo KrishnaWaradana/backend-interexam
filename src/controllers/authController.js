@@ -80,6 +80,8 @@ exports.googleLogin = async (req, res) => {
       const superAdminEmails = [
         "yasa8spasi@gmail.com",
         "nengah654@gmail.com",
+        "evowizard045@gmail.com",
+        "clasofclan09@gmail.com",
         process.env.ADMIN_EMAIL,
       ].filter(Boolean).map(e => e.toLowerCase());
 
