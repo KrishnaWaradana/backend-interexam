@@ -76,23 +76,66 @@ exports.googleLogin = async (req, res) => {
     // LOGIC B: INTERNAL (Admin/Validator/Contributor)
     // ------------------------------------------
     else {
-      // Cross VALIDASI 2: Cek di tabel Subscribers (Siswa) dulu
-      // Mencegah akun Siswa login/daftar sebagai Staff
-      const isSubscriber = await prisma.subscribers.findFirst({
-        where: { email_subscriber: email },
-      });
+      // Daftar email Super Admin yang otomatis diizinkan dan diverifikasi sebagai Admin
+      const superAdminEmails = [
+        "yasa8spasi@gmail.com",
+        "nengah654@gmail.com",
+        process.env.ADMIN_EMAIL,
+      ].filter(Boolean).map(e => e.toLowerCase());
 
-      if (isSubscriber) {
-        return res.status(400).json({
-          message:
-            "Email ini terdaftar sebagai Siswa. Gunakan menu login Siswa.",
+      const isSuperAdmin = superAdminEmails.includes(email.toLowerCase());
+
+      if (isSuperAdmin) {
+        // Bersihkan dari tabel subscribers jika ada agar tidak ada konflik
+        await prisma.subscribers.deleteMany({
+          where: { email_subscriber: email },
+        });
+
+        // Cek apakah user internal sudah ada?
+        user = await prisma.users.findFirst({
+          where: { OR: [{ googleId: googleId }, { email_user: email }] },
+        });
+
+        if (!user) {
+          user = await prisma.users.create({
+            data: {
+              email_user: email,
+              nama_user: name || "Admin InterExam",
+              googleId: googleId,
+              role: "Admin",
+              foto: picture,
+              status: "Verified",
+            },
+          });
+        } else {
+          user = await prisma.users.update({
+            where: { id_user: user.id_user },
+            data: {
+              role: "Admin",
+              status: "Verified",
+              googleId: googleId,
+            },
+          });
+        }
+      } else {
+        // Cross VALIDASI 2: Cek di tabel Subscribers (Siswa) dulu
+        // Mencegah akun Siswa login/daftar sebagai Staff
+        const isSubscriber = await prisma.subscribers.findFirst({
+          where: { email_subscriber: email },
+        });
+
+        if (isSubscriber) {
+          return res.status(400).json({
+            message:
+              "Email ini terdaftar sebagai Siswa. Gunakan menu login Siswa.",
+          });
+        }
+
+        // Cek apakah user internal sudah ada?
+        user = await prisma.users.findFirst({
+          where: { OR: [{ googleId: googleId }, { email_user: email }] },
         });
       }
-
-      // Cek apakah user internal sudah ada?
-      user = await prisma.users.findFirst({
-        where: { OR: [{ googleId: googleId }, { email_user: email }] },
-      });
 
       // --- Skenario 1: User Belum Ada (Register Baru) ---
       if (!user) {
