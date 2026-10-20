@@ -1,13 +1,20 @@
 const { OAuth2Client } = require('google-auth-library');
 
-const CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
-const client = new OAuth2Client(CLIENT_ID);
-
 const verifyGoogleToken = async (token) => {
   try {
+    const clientId = process.env.GOOGLE_CLIENT_ID;
+    const client = new OAuth2Client(clientId);
+
+    // Izinkan Client ID dari .env maupun Client ID baru / lama
+    const allowedAudiences = [
+      clientId,
+      '686000565049-unee3nk2g89vkbd6n5bvv15do1g93feo.apps.googleusercontent.com',
+      '972513524217-kk7nu2dgqra50kjsgad7ipouc7blji3c.apps.googleusercontent.com'
+    ].filter(Boolean);
+
     const ticket = await client.verifyIdToken({
       idToken: token,
-      audience: CLIENT_ID, 
+      audience: allowedAudiences, 
     });
     const payload = ticket.getPayload();
     
@@ -18,7 +25,8 @@ const verifyGoogleToken = async (token) => {
       picture: payload.picture,
     };
   } catch (error) {
-    throw new Error('Invalid Google Token');
+    console.error('Detail Error Verifikasi Google Token:', error);
+    throw new Error(`Invalid Google Token: ${error.message}`);
   }
 };
 
